@@ -80,6 +80,67 @@ def get_figure8_initial_conditions():
     return positions, velocities, masses
 
 
+def get_chaotic_initial_conditions(seed=None):
+    """
+    カオス的な動きを生成するランダム初期条件を返す
+    
+    物体が飛び去らないよう、束縛状態（負の全エネルギー）を保証する。
+    重心が原点に固定され、運動量がゼロになるよう調整。
+    
+    Args:
+        seed: 乱数シード（再現性のため、Noneなら毎回異なる）
+    
+    Returns:
+        positions: 形状 (3, 2) の位置配列 [x, y]
+        velocities: 形状 (3, 2) の速度配列 [vx, vy]
+        masses: 形状 (3,) の質量配列
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # 質量（少しばらつきを持たせる）
+    masses = np.array([1.0, 1.0 + 0.2 * np.random.randn(), 
+                       1.0 + 0.2 * np.random.randn()])
+    masses = np.clip(masses, 0.5, 1.5)  # 質量は0.5〜1.5の範囲
+    
+    # ランダムな初期位置（半径1.0程度の円内）
+    positions = np.random.randn(3, 2) * 0.8
+    
+    # 重心を原点に移動
+    center_of_mass = np.average(positions, axis=0, weights=masses)
+    positions -= center_of_mass
+    
+    # ランダムな初期速度（小さめに設定して束縛状態を保証）
+    velocities = np.random.randn(3, 2) * 0.3
+    
+    # 総運動量をゼロに調整（運動量保存のため）
+    total_momentum = np.sum(masses[:, np.newaxis] * velocities, axis=0)
+    velocities -= total_momentum / np.sum(masses)
+    
+    # エネルギーをチェックし、必要なら速度を調整して束縛状態を保証
+    total_energy = _compute_energy_for_ic(positions, velocities, masses)
+    
+    # エネルギーが正（非束縛）の場合、速度を減らす
+    while total_energy > -0.1:
+        velocities *= 0.8
+        total_energy = _compute_energy_for_ic(positions, velocities, masses)
+    
+    return positions, velocities, masses
+
+
+def _compute_energy_for_ic(positions, velocities, masses):
+    """初期条件チェック用のエネルギー計算（内部関数）"""
+    n = len(masses)
+    ke = 0.5 * np.sum(masses * np.sum(velocities**2, axis=1))
+    pe = 0.0
+    for i in range(n):
+        for j in range(i+1, n):
+            r = np.linalg.norm(positions[j] - positions[i])
+            if r > 1e-10:
+                pe -= G * masses[i] * masses[j] / r
+    return ke + pe
+
+
 # ============================================================
 # 万有引力の法則（ベクトル形式）
 # ============================================================
@@ -106,9 +167,10 @@ def compute_gravitational_forces(positions, masses):
                 # 物体jから物体iへの相対位置ベクトル
                 r_ij = positions[j] - positions[i]
                 
-                # 距離（ゼロ除算防止のためソフトニング）
+                # 距離（ソフトニングで近接時の発散を防止）
                 distance = np.linalg.norm(r_ij)
-                distance = max(distance, 1e-10)  # ソフトニング
+                softening = 0.01  # ソフトニング距離
+                distance = max(distance, softening)
                 
                 # 万有引力の計算（ベクトル形式）
                 force_magnitude = G * masses[i] * masses[j] / (distance ** 2)
@@ -224,21 +286,28 @@ def compute_total_energy(positions, velocities, masses):
 # シミュレーション実行
 # ============================================================
 
-def run_simulation(dt=DT, t_max=T_MAX):
+def run_simulation(mode='figure8', dt=DT, t_max=T_MAX, seed=None):
     """
     シミュレーションを実行し、全時刻の状態を記録
     
     Args:
+        mode: 'figure8'(安定・8の字解) または 'chaos'(カオス的)
         dt: タイムステップ
         t_max: シミュレーション総時間
+        seed: 乱数シード（chaosモードのみ、再現性のため）
     
     Returns:
         history: 各時刻の位置を格納した配列 (n_steps, 3, 2)
         energies: 各時刻のエネルギー (n_steps,)
         times: 時刻配列 (n_steps,)
     """
-    # 初期条件
-    positions, velocities, masses = get_figure8_initial_conditions()
+    # 初期条件の選択
+    if mode == 'chaos':
+        positions, velocities, masses = get_chaotic_initial_conditions(seed)
+        print("🌀 カオスモード: ランダム初期条件")
+    else:
+        positions, velocities, masses = get_figure8_initial_conditions()
+        print("♾️  8の字解モード: 安定周期軌道")
     
     # 記録用配列
     n_steps = int(t_max / dt)
@@ -277,11 +346,12 @@ def run_simulation(dt=DT, t_max=T_MAX):
     return history, energies, times
 
 
+
 # ============================================================
 # アニメーション可視化
 # ============================================================
 
-def create_animation(history, times, save_file=None):
+def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
     """
     軌跡付きアニメーションを作成
     
@@ -289,15 +359,19 @@ def create_animation(history, times, save_file=None):
         history: 位置履歴 (n_steps, 3, 2)
         times: 時刻配列 (n_steps,)
         save_file: 保存ファイル名（Noneなら保存しない）
+        title: 表示タイトル
     """
     # カラー設定（鮮やかな配色）
     colors = ['#FF6B6B', '#4ECDC4', '#FFE66D']  # 赤、青緑、黄
     
+    # 表示範囲を動的に計算（カオスモードは広がる可能性がある）
+    max_range = max(np.abs(history).max() * 1.2, 1.5)
+    
     # プロット設定
     fig, ax = plt.subplots(figsize=(10, 10), facecolor='#1a1a2e')
     ax.set_facecolor('#1a1a2e')
-    ax.set_xlim(-1.5, 1.5)
-    ax.set_ylim(-1.5, 1.5)
+    ax.set_xlim(-max_range, max_range)
+    ax.set_ylim(-max_range, max_range)
     ax.set_aspect('equal')
     ax.set_xlabel('X', color='white', fontsize=12)
     ax.set_ylabel('Y', color='white', fontsize=12)
@@ -306,8 +380,8 @@ def create_animation(history, times, save_file=None):
         spine.set_color('white')
     
     # タイトル
-    title = ax.set_title('Three-Body Problem Simulation\n(Figure-8 Solution)', 
-                         color='white', fontsize=14, fontweight='bold')
+    ax.set_title(f'Three-Body Problem Simulation\n({title})', 
+                 color='white', fontsize=14, fontweight='bold')
     
     # 時刻表示
     time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, 
@@ -395,16 +469,37 @@ if __name__ == "__main__":
     print("Three-Body Problem Simulator")
     print("  Physics: Newton's Law of Universal Gravitation")
     print("  Integration: 4th-order Runge-Kutta (RK4)")
-    print("  Initial Condition: Figure-8 Solution (Chenciner-Montgomery)")
     print("=" * 60)
+    print()
+    print("モードを選択してください:")
+    print("  1: ♾️  8の字解（安定した美しい軌道）")
+    print("  2: 🌀 カオスモード（予測不能な動き）")
+    print()
+    
+    choice = input("選択 (1 または 2): ").strip()
+    
+    if choice == '2':
+        mode = 'chaos'
+        print()
+        print("🌀 カオスモードを選択しました")
+        print("初期条件がランダムなので、毎回異なる軌道が見られます。")
+        print("短期的には正確ですが、長期予測は不可能（カオス）です。")
+    else:
+        mode = 'figure8'
+        print()
+        print("♾️  8の字解モードを選択しました")
+        print("数学的に証明された美しい周期軌道です。")
+    
     print()
     
     # シミュレーション実行
-    history, energies, times = run_simulation()
+    history, energies, times = run_simulation(mode=mode)
     
     print()
     print("アニメーション表示を開始...")
     print("（ウィンドウを閉じると終了します）")
     
     # アニメーション表示
-    anim = create_animation(history, times)
+    title = 'Chaotic Motion' if mode == 'chaos' else 'Figure-8 Solution'
+    anim = create_animation(history, times, title=title)
+
