@@ -364,13 +364,14 @@ def run_simulation(mode='figure8', dt=DT, t_max=T_MAX, seed=None):
 # アニメーション可視化
 # ============================================================
 
-def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
+def create_animation(history, times, energies=None, save_file=None, title='Figure-8 Solution'):
     """
-    軌跡付きアニメーションを作成
+    軌跡付きアニメーションを作成（リアルタイム情報表示付き）
     
     Args:
         history: 位置履歴 (n_steps, 3, 2)
         times: 時刻配列 (n_steps,)
+        energies: エネルギー履歴 (n_steps,) - オプション
         save_file: 保存ファイル名（Noneなら保存しない）
         title: 表示タイトル
     """
@@ -380,8 +381,8 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
     # 表示範囲を動的に計算（カオスモードは広がる可能性がある）
     max_range = max(np.abs(history).max() * 1.2, 1.5)
     
-    # プロット設定
-    fig, ax = plt.subplots(figsize=(10, 10), facecolor='#1a1a2e')
+    # プロット設定（情報パネル用に少し広めに）
+    fig, ax = plt.subplots(figsize=(12, 10), facecolor='#1a1a2e')
     ax.set_facecolor('#1a1a2e')
     ax.set_xlim(-max_range, max_range)
     ax.set_ylim(-max_range, max_range)
@@ -396,10 +397,12 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
     ax.set_title(f'Three-Body Problem Simulation\n({title})', 
                  color='white', fontsize=14, fontweight='bold')
     
-    # 時刻表示
-    time_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, 
-                        color='white', fontsize=10, verticalalignment='top',
-                        fontfamily='monospace')
+    # 情報パネル（左下に配置）
+    info_text = ax.text(0.02, 0.02, '', transform=ax.transAxes, 
+                        color='#00ff88', fontsize=9, verticalalignment='bottom',
+                        fontfamily='monospace',
+                        bbox=dict(boxstyle='round', facecolor='#0a0a1a', 
+                                  edgecolor='#00ff88', alpha=0.9))
     
     # 物体のプロット要素
     bodies = []
@@ -412,7 +415,7 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
                         label=f'Body {i+1}')
         bodies.append(body)
         
-        # 軌跡（グラデーション効果のためLineCollectionを使用）
+        # 軌跡
         trail, = ax.plot([], [], '-', color=colors[i], alpha=0.6, linewidth=2)
         trails.append(trail)
     
@@ -423,6 +426,10 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
     sample_rate = max(1, len(history) // 1000)
     sampled_history = history[::sample_rate]
     sampled_times = times[::sample_rate]
+    sampled_energies = energies[::sample_rate] if energies is not None else None
+    
+    # 初期エネルギー（ドリフト計算用）
+    initial_energy = energies[0] if energies is not None else 0
     
     # 軌跡の長さをサンプリング後の値に調整
     trail_frames = TRAIL_LENGTH // sample_rate
@@ -432,13 +439,25 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
         for body, trail in zip(bodies, trails):
             body.set_data([], [])
             trail.set_data([], [])
-        time_text.set_text('')
-        return bodies + trails + [time_text]
+        info_text.set_text('')
+        return bodies + trails + [info_text]
     
     def update(frame):
         """アニメーション更新"""
         # 軌跡の開始フレーム
         trail_start = max(0, frame - trail_frames)
+        
+        # 情報テキストを構築
+        info_lines = [f"Time: {sampled_times[frame]:.2f}"]
+        
+        # エネルギー情報
+        if sampled_energies is not None:
+            current_energy = sampled_energies[frame]
+            drift = abs(current_energy - initial_energy) / abs(initial_energy) * 100
+            info_lines.append(f"Energy: {current_energy:.4f}")
+            info_lines.append(f"Drift: {drift:.4f}%")
+        
+        info_lines.append("")  # 空行
         
         for i, (body, trail) in enumerate(zip(bodies, trails)):
             # 物体の現在位置
@@ -449,11 +468,13 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
             trail_x = sampled_history[trail_start:frame+1, i, 0]
             trail_y = sampled_history[trail_start:frame+1, i, 1]
             trail.set_data(trail_x, trail_y)
+            
+            # 各物体の位置情報
+            info_lines.append(f"Body {i+1}: ({x:+.3f}, {y:+.3f})")
         
-        # 時刻表示
-        time_text.set_text(f'Time: {sampled_times[frame]:.2f}')
+        info_text.set_text('\n'.join(info_lines))
         
-        return bodies + trails + [time_text]
+        return bodies + trails + [info_text]
     
     # アニメーション作成
     anim = FuncAnimation(
@@ -471,6 +492,7 @@ def create_animation(history, times, save_file=None, title='Figure-8 Solution'):
     plt.show()
     
     return anim
+
 
 
 # ============================================================
@@ -514,5 +536,5 @@ if __name__ == "__main__":
     
     # アニメーション表示
     title = 'Chaotic Motion' if mode == 'chaos' else 'Figure-8 Solution'
-    anim = create_animation(history, times, title=title)
+    anim = create_animation(history, times, energies=energies, title=title)
 
