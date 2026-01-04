@@ -1,9 +1,9 @@
 """
 三体問題シミュレーター 3D版（Three-Body Problem Simulator 3D）
-- 自動リスタート機能付き
-- ビジュアルエフェクト：速度ベクトル、質量サイズ
+- 自動リスタート機能付き：物体がキューブを出たら新しい初期条件で再スタート
+- ビジュアルエフェクト：速度ベクトル、質量サイズ、速度色変化、グロー効果
 
-物理モデル: 万有引力の法則
+物理モデル: 万有引力の法則（ニュートンの重力法則）
 計算手法: 4次ルンゲ＝クッタ法（RK4）
 """
 
@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.cm as cm
 import time
 
 
@@ -25,7 +26,10 @@ ANIMATION_INTERVAL = 30
 TRAIL_LENGTH = 1500
 SOFTENING = 0.05
 DISPLAY_RANGE = 1.5
-VELOCITY_ARROW_SCALE = 0.3
+
+# エフェクト設定
+VELOCITY_ARROW_SCALE = 0.3  # 速度ベクトルの表示スケール
+MAX_SPEED = 2.0  # 色変化の最大速度基準
 
 
 # ============================================================
@@ -46,12 +50,8 @@ def get_chaotic_initial_conditions_3d():
     """カオス的な動きを生成するランダム3D初期条件"""
     np.random.seed(int(time.time() * 1000) % (2**32))
     
-    # 質量は0.5〜2.0の範囲でランダム（より大きなばらつき）
-    masses = np.array([
-        0.5 + np.random.rand() * 1.5,  # 0.5〜2.0
-        0.5 + np.random.rand() * 1.5,
-        0.5 + np.random.rand() * 1.5
-    ])
+    masses = np.array([1.0, 1.0 + 0.2 * np.random.randn(), 1.0 + 0.2 * np.random.randn()])
+    masses = np.clip(masses, 0.5, 1.5)
     
     positions = np.random.randn(3, 3) * 0.5
     positions = np.clip(positions, -1.0, 1.0)
@@ -121,7 +121,17 @@ def is_out_of_bounds(positions, bound=DISPLAY_RANGE):
 
 
 # ============================================================
-# リアルタイム3Dアニメーション
+# 速度から色を計算（coolwarm カラーマップ）
+# ============================================================
+
+def speed_to_color(speed):
+    """速度に応じて青→白→赤に変化"""
+    normalized = min(speed / MAX_SPEED, 1.0)
+    return cm.coolwarm(normalized)
+
+
+# ============================================================
+# リアルタイム3Dアニメーション（エフェクト付き）
 # ============================================================
 
 def run_realtime_animation():
@@ -135,12 +145,12 @@ def run_realtime_animation():
     generation = [1]
     sim_time = [0.0]
     
-    # カラー設定
-    colors = ['#FF6B6B', '#4ECDC4', '#FFE66D']
+    # ベースカラー（グロー用）
+    base_colors = ['#FF6B6B', '#4ECDC4', '#FFE66D']
     
     # 3Dプロット設定
-    fig = plt.figure(figsize=(12, 10), facecolor='#1a1a2e')
-    ax = fig.add_subplot(111, projection='3d', facecolor='#1a1a2e')
+    fig = plt.figure(figsize=(14, 11), facecolor='#0a0a1a')
+    ax = fig.add_subplot(111, projection='3d', facecolor='#0a0a1a')
     
     ax.set_xlim(-DISPLAY_RANGE, DISPLAY_RANGE)
     ax.set_ylim(-DISPLAY_RANGE, DISPLAY_RANGE)
@@ -149,15 +159,15 @@ def run_realtime_animation():
     ax.set_ylabel('Y', color='white', fontsize=12)
     ax.set_zlabel('Z', color='white', fontsize=12)
     ax.tick_params(colors='white')
-    ax.set_title('Three-Body Problem 3D\n(Auto-restart)', 
+    ax.set_title('Three-Body Problem 3D\nwith Visual Effects', 
                  color='white', fontsize=14, fontweight='bold')
     
     ax.xaxis.pane.fill = False
     ax.yaxis.pane.fill = False
     ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor('white')
-    ax.yaxis.pane.set_edgecolor('white')
-    ax.zaxis.pane.set_edgecolor('white')
+    ax.xaxis.pane.set_edgecolor('#333333')
+    ax.yaxis.pane.set_edgecolor('#333333')
+    ax.zaxis.pane.set_edgecolor('#333333')
     
     # 情報パネル
     info_text = fig.text(0.02, 0.02, '', color='#00ff88', fontsize=9,
@@ -165,23 +175,43 @@ def run_realtime_animation():
                          bbox=dict(boxstyle='round', facecolor='#0a0a1a', 
                                    edgecolor='#00ff88', alpha=0.9))
     
-    # 物体（質量に応じたサイズは動的に設定）
+    # 凡例用テキスト
+    legend_text = fig.text(0.98, 0.02, 
+                           'Effects:\n• Size = Mass\n• Color = Speed\n• Arrow = Velocity\n• Glow = Presence',
+                           color='#888888', fontsize=8,
+                           fontfamily='monospace', verticalalignment='bottom',
+                           horizontalalignment='right',
+                           bbox=dict(boxstyle='round', facecolor='#0a0a1a', 
+                                     edgecolor='#444444', alpha=0.9))
+    
+    # グロー用の描画オブジェクト（外側から内側へ）
+    glow_layers = [[], [], []]  # 3物体 × 複数レイヤー
+    glow_alphas = [0.1, 0.2, 0.4]
+    glow_sizes = [25, 18, 12]
+    
+    for i in range(3):
+        for alpha, size in zip(glow_alphas, glow_sizes):
+            glow, = ax.plot([], [], [], 'o', color=base_colors[i], 
+                           markersize=size, alpha=alpha)
+            glow_layers[i].append(glow)
+    
+    # メインの物体（中心、動的サイズ・色）
     bodies = []
     for i in range(3):
-        body, = ax.plot([], [], [], 'o', color=colors[i], markersize=10,
+        body, = ax.plot([], [], [], 'o', color=base_colors[i], markersize=10,
                         markeredgecolor='white', markeredgewidth=1.5)
         bodies.append(body)
     
     # 軌跡
     trails = []
     for i in range(3):
-        trail, = ax.plot([], [], [], '-', color=colors[i], alpha=0.5, linewidth=1.5)
+        trail, = ax.plot([], [], [], '-', color=base_colors[i], alpha=0.4, linewidth=1.5)
         trails.append(trail)
     
-    # 速度ベクトル
+    # 速度ベクトル用（quiverの代わりにplotで矢印を表現）
     velocity_arrows = []
     for i in range(3):
-        arrow, = ax.plot([], [], [], '-', color=colors[i], linewidth=2, alpha=0.8)
+        arrow, = ax.plot([], [], [], '-', color='white', linewidth=2, alpha=0.8)
         velocity_arrows.append(arrow)
     
     # 状態を保持
@@ -219,6 +249,7 @@ def run_realtime_animation():
         
         # 情報テキスト
         energy = _compute_energy_3d(state['positions'], state['velocities'], state['masses'])
+        speeds = [np.linalg.norm(state['velocities'][i]) for i in range(3)]
         info_lines = [
             f"Generation: {generation[0]}",
             f"Time: {sim_time[0]:.2f}",
@@ -228,7 +259,8 @@ def run_realtime_animation():
         for i in range(3):
             x, y, z = state['positions'][i]
             m = state['masses'][i]
-            info_lines.append(f"Body {i+1}: m={m:.2f}")
+            s = speeds[i]
+            info_lines.append(f"Body {i+1}: m={m:.2f} v={s:.2f}")
         info_text.set_text('\n'.join(info_lines))
         
         # 描画更新
@@ -236,14 +268,26 @@ def run_realtime_animation():
             x, y, z = state['positions'][i]
             vx, vy, vz = state['velocities'][i]
             mass = state['masses'][i]
+            speed = speeds[i]
             
-            # エフェクト: 質量に応じたサイズ（0.5〜2.0 → 8〜20）
-            size = 8 + (mass - 0.5) * 8
+            # エフェクト1: 質量に応じたサイズ
+            base_size = 8 + mass * 6
             
-            # 物体
+            # エフェクト3: 速度に応じた色
+            color = speed_to_color(speed)
+            
+            # エフェクト4: グロー効果
+            for layer_idx, glow in enumerate(glow_layers[i]):
+                glow_size = glow_sizes[layer_idx] + mass * 4
+                glow.set_data([x], [y])
+                glow.set_3d_properties([z])
+                glow.set_markersize(glow_size)
+            
+            # メイン物体の更新
             bodies[i].set_data([x], [y])
             bodies[i].set_3d_properties([z])
-            bodies[i].set_markersize(size)
+            bodies[i].set_markersize(base_size)
+            bodies[i].set_color(color)
             
             # 軌跡
             if trail_history[i]:
@@ -251,12 +295,13 @@ def run_realtime_animation():
                 trails[i].set_data(trail_arr[:, 0], trail_arr[:, 1])
                 trails[i].set_3d_properties(trail_arr[:, 2])
             
-            # 速度ベクトル
+            # エフェクト2: 速度ベクトル（矢印）
             arrow_end_x = x + vx * VELOCITY_ARROW_SCALE
             arrow_end_y = y + vy * VELOCITY_ARROW_SCALE
             arrow_end_z = z + vz * VELOCITY_ARROW_SCALE
             velocity_arrows[i].set_data([x, arrow_end_x], [y, arrow_end_y])
             velocity_arrows[i].set_3d_properties([z, arrow_end_z])
+            velocity_arrows[i].set_color(color)
         
         # 視点回転
         state['azim'] += 0.3
@@ -279,9 +324,11 @@ def run_realtime_animation():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Three-Body Problem Simulator【3D版】")
-    print("  • 速度ベクトル表示")
-    print("  • 質量に応じたサイズ変化（0.5〜2.0の範囲でランダム）")
+    print("Three-Body Problem Simulator【3D版・エフェクト付き】")
+    print("  • 速度ベクトル表示（白い矢印）")
+    print("  • 質量に応じたサイズ変化")
+    print("  • 速度に応じた色変化（青→赤）")
+    print("  • グロー効果（発光）")
     print("  • 物体がキューブ範囲外に出ると自動リスタート")
     print("=" * 60)
     print()
