@@ -145,8 +145,9 @@ three-body-sim/
 ├── nbody_simulation_advanced.py  # Learning Edition（推奨）
 ├── three_body_simulation_3d.py   # シンプル3D版
 ├── three_body_simulation.py      # 2D版
-├── README.md                     # このファイル
-└── antigravity.md                # プロジェクト憲法
+├── create_demo.py                # デモGIF生成スクリプト
+├── demo.gif                      # デモ動画
+└── README.md                     # このファイル
 ```
 
 ---
