@@ -103,8 +103,14 @@ def get_chaotic_initial_conditions(seed=None):
                        1.0 + 0.2 * np.random.randn()])
     masses = np.clip(masses, 0.5, 1.5)  # 質量は0.5〜1.5の範囲
     
-    # ランダムな初期位置（半径1.0程度の円内）
-    positions = np.random.randn(3, 2) * 0.8
+    # ランダムな初期位置（物体同士が十分離れるように配置）
+    # 三角形配置をベースに、少しランダムにズラす
+    angles = np.array([0, 2*np.pi/3, 4*np.pi/3]) + np.random.randn(3) * 0.3
+    radius = 0.8 + np.random.rand() * 0.4  # 0.8-1.2の範囲
+    positions = np.column_stack([radius * np.cos(angles), radius * np.sin(angles)])
+    
+    # ランダムな操動を加える
+    positions += np.random.randn(3, 2) * 0.2
     
     # 重心を原点に移動
     center_of_mass = np.average(positions, axis=0, weights=masses)
@@ -149,7 +155,8 @@ def compute_gravitational_forces(positions, masses):
     """
     万有引力の法則に基づき、各物体に働く力を計算
     
-    F_ij = G * m_i * m_j / |r_ij|^3 * r_ij  (ベクトル形式)
+    Plummerソフトニングを使用: F = G * m_i * m_j / (r^2 + eps^2)^(3/2) * r
+    これにより近接時の数値的特異性を回避しながら、遠方では通常の重力に収束
     
     Args:
         positions: 形状 (N, 2) の位置配列
@@ -160,25 +167,24 @@ def compute_gravitational_forces(positions, masses):
     """
     n = len(masses)
     forces = np.zeros_like(positions)
+    softening = 0.05  # Plummerソフトニング長
+    eps2 = softening ** 2
     
     for i in range(n):
         for j in range(n):
             if i != j:
                 # 物体jから物体iへの相対位置ベクトル
                 r_ij = positions[j] - positions[i]
+                r2 = np.dot(r_ij, r_ij)  # |r|^2
                 
-                # 距離（ソフトニングで近接時の発散を防止）
-                distance = np.linalg.norm(r_ij)
-                softening = 0.01  # ソフトニング距離
-                distance = max(distance, softening)
+                # Plummerソフトニング力: F = G*m*M*r / (r^2 + eps^2)^(3/2)
+                denom = (r2 + eps2) ** 1.5
+                force_vec = G * masses[i] * masses[j] * r_ij / denom
                 
-                # 万有引力の計算（ベクトル形式）
-                force_magnitude = G * masses[i] * masses[j] / (distance ** 2)
-                force_direction = r_ij / distance
-                
-                forces[i] += force_magnitude * force_direction
+                forces[i] += force_vec
     
     return forces
+
 
 
 def compute_accelerations(positions, masses):
@@ -272,12 +278,15 @@ def compute_total_energy(positions, velocities, masses):
     # 運動エネルギー: KE = Σ 0.5 * m * v^2
     kinetic_energy = 0.5 * np.sum(masses * np.sum(velocities**2, axis=1))
     
-    # ポテンシャルエネルギー: PE = -Σ G * m_i * m_j / r_ij
+    # Plummerポテンシャルエネルギー: PE = -Σ G * m_i * m_j / sqrt(r^2 + eps^2)
     potential_energy = 0.0
+    softening = 0.05  # Plummerソフトニング長（力の計算と同じ値）
+    eps2 = softening ** 2
     for i in range(n):
         for j in range(i+1, n):
-            r_ij = np.linalg.norm(positions[j] - positions[i])
-            potential_energy -= G * masses[i] * masses[j] / r_ij
+            r_vec = positions[j] - positions[i]
+            r2 = np.dot(r_vec, r_vec)
+            potential_energy -= G * masses[i] * masses[j] / np.sqrt(r2 + eps2)
     
     return kinetic_energy + potential_energy
 
