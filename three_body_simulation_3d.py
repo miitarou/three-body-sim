@@ -255,16 +255,16 @@ def create_animation_3d(history, times, energies=None, save_file=None, title='Fi
     """3D軌跡付きアニメーションを作成"""
     colors = ['#FF6B6B', '#4ECDC4', '#FFE66D']
     
-    # 表示範囲を動的に計算
-    max_range = max(np.abs(history).max() * 1.3, 1.5)
+    # 固定スケール（ダイナミックな動きを見せるため）
+    FIXED_RANGE = 1.5
     
     # 3Dプロット設定
     fig = plt.figure(figsize=(12, 10), facecolor='#1a1a2e')
     ax = fig.add_subplot(111, projection='3d', facecolor='#1a1a2e')
     
-    ax.set_xlim(-max_range, max_range)
-    ax.set_ylim(-max_range, max_range)
-    ax.set_zlim(-max_range, max_range)
+    ax.set_xlim(-FIXED_RANGE, FIXED_RANGE)
+    ax.set_ylim(-FIXED_RANGE, FIXED_RANGE)
+    ax.set_zlim(-FIXED_RANGE, FIXED_RANGE)
     ax.set_xlabel('X', color='white', fontsize=12)
     ax.set_ylabel('Y', color='white', fontsize=12)
     ax.set_zlabel('Z', color='white', fontsize=12)
