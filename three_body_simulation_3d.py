@@ -345,7 +345,7 @@ def create_animation_3d(history, times, energies=None, save_file=None, title='Fi
     
     anim = FuncAnimation(
         fig, update, frames=len(sampled_history),
-        blit=False, interval=ANIMATION_INTERVAL
+        blit=False, interval=ANIMATION_INTERVAL, repeat=True  # 無限ループ
     )
     
     if save_file:
