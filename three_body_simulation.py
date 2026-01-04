@@ -97,6 +97,10 @@ def get_chaotic_initial_conditions(seed=None):
     """
     if seed is not None:
         np.random.seed(seed)
+    else:
+        # 毎回異なる軌道を生成するため、現在時刻でシードを初期化
+        import time
+        np.random.seed(int(time.time() * 1000) % (2**32))
     
     # 質量（少しばらつきを持たせる）
     masses = np.array([1.0, 1.0 + 0.2 * np.random.randn(), 
