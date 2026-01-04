@@ -3,6 +3,9 @@
 シミュレーションを10秒間録画してGIFとして保存
 """
 
+import matplotlib
+matplotlib.use('Agg')  # ヘッドレスバックエンド
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -151,7 +154,7 @@ def create_demo_gif():
     azim = [30]
     trail_history = [[] for _ in range(n_bodies)]
     max_trail = 300
-    show_forces = True
+    show_forces = False  # シンプルな見た目にするため力ベクトルはオフ
     
     total_frames = 300  # 10秒 @ 30fps
     
