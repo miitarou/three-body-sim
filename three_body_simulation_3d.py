@@ -49,18 +49,20 @@ def get_chaotic_initial_conditions_3d():
     masses = np.array([1.0, 1.0 + 0.2 * np.random.randn(), 1.0 + 0.2 * np.random.randn()])
     masses = np.clip(masses, 0.5, 1.5)
     
-    positions = np.random.randn(3, 3) * 0.8
+    # 初期位置は小さめに設定して範囲内に収まるようにする
+    positions = np.random.randn(3, 3) * 0.5
+    positions = np.clip(positions, -1.0, 1.0)  # 範囲内に制限
     center_of_mass = np.average(positions, axis=0, weights=masses)
     positions -= center_of_mass
     
-    velocities = np.random.randn(3, 3) * 0.3
+    velocities = np.random.randn(3, 3) * 0.4
     total_momentum = np.sum(masses[:, np.newaxis] * velocities, axis=0)
     velocities -= total_momentum / np.sum(masses)
     
     # 束縛状態を保証
     total_energy = _compute_energy_3d(positions, velocities, masses)
-    while total_energy > -0.1:
-        velocities *= 0.8
+    while total_energy > -0.3:  # より束縛を強く
+        velocities *= 0.9
         total_energy = _compute_energy_3d(positions, velocities, masses)
     
     return positions, velocities, masses
