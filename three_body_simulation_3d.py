@@ -84,15 +84,15 @@ def get_chaotic_initial_conditions_3d(seed=None):
                        1.0 + 0.2 * np.random.randn()])
     masses = np.clip(masses, 0.5, 1.5)
     
-    # ランダムな初期位置（より広い範囲に配置）
-    positions = np.random.randn(3, 3) * 1.2
+    # ランダムな初期位置（3D球殻上に配置）
+    positions = np.random.randn(3, 3) * 0.8
     
     # 重心を原点に移動
     center_of_mass = np.average(positions, axis=0, weights=masses)
     positions -= center_of_mass
     
-    # ランダムな初期速度（少し大きめ）
-    velocities = np.random.randn(3, 3) * 0.5
+    # ランダムな初期速度
+    velocities = np.random.randn(3, 3) * 0.3
     
     # 総運動量をゼロに調整
     total_momentum = np.sum(masses[:, np.newaxis] * velocities, axis=0)
