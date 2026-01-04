@@ -171,6 +171,7 @@ def run_advanced_simulation():
     generation = [1]
     sim_time = [0.0]
     azim = [30]
+    zoom = [1.0]  # ズームレベル（1.0=デフォルト）
     
     stats = {
         'max_generation': 1,
@@ -215,7 +216,7 @@ def run_advanced_simulation():
     
     # 操作説明（右下）
     help_text = fig.text(0.98, 0.02, 
-                         '[SPACE]=Pause  [R]=Restart  [A]=Rotate  [Q]=Quit',
+                         '[SPACE]=Pause [R]=Restart [A]=Rotate [+/-]=Zoom [Q]=Quit',
                          color='#666666', fontsize=8, fontfamily='monospace',
                          horizontalalignment='right', verticalalignment='bottom')
     
@@ -274,8 +275,32 @@ def run_advanced_simulation():
         elif event.key == 'q':
             print("👋 Exiting...")
             plt.close()
+        
+        elif event.key in ['+', '=']:
+            zoom[0] = max(0.3, zoom[0] * 0.8)  # ズームイン
+            update_zoom()
+            print(f"🔍 Zoom: {1/zoom[0]:.1f}x")
+        
+        elif event.key == '-':
+            zoom[0] = min(3.0, zoom[0] * 1.25)  # ズームアウト
+            update_zoom()
+            print(f"🔍 Zoom: {1/zoom[0]:.1f}x")
+    
+    def on_scroll(event):
+        if event.button == 'up':
+            zoom[0] = max(0.3, zoom[0] * 0.9)
+        else:
+            zoom[0] = min(3.0, zoom[0] * 1.1)
+        update_zoom()
+    
+    def update_zoom():
+        r = DISPLAY_RANGE * zoom[0]
+        ax_3d.set_xlim(-r, r)
+        ax_3d.set_ylim(-r, r)
+        ax_3d.set_zlim(-r, r)
     
     fig.canvas.mpl_connect('key_press_event', on_key)
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
     
     # ============================================================
     # アニメーション更新
@@ -326,7 +351,7 @@ def run_advanced_simulation():
         
         # 情報テキスト（控えめに数字表示）
         info_lines = [
-            f"Gen: {generation[0]}  Time: {sim_time[0]:.1f}",
+            f"Gen: {generation[0]}  Time: {sim_time[0]:.1f}  Zoom: {1/zoom[0]:.1f}x",
             f"Energy: {energy:.3f}  MinDist: {min_dist:.2f}",
             f"MaxGen: {stats['max_generation']}  AvgLife: {avg_time:.1f}s",
         ]
@@ -383,6 +408,8 @@ if __name__ == "__main__":
     print("  [SPACE] = Pause/Resume")
     print("  [R]     = Restart with new conditions")
     print("  [A]     = Toggle auto-rotation")
+    print("  [+/-]   = Zoom in/out")
+    print("  [Wheel] = Zoom in/out")
     print("  [Q]     = Quit")
     print("  [Mouse] = Drag to rotate view (when auto-rotate is OFF)")
     print()
