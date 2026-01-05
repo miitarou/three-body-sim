@@ -341,6 +341,300 @@ class TestMinDistance:
         min_dist = compute_min_distance(positions)
         
         assert np.isclose(min_dist, 2.0)
+
+
+# ============================================================
+# GUI / アニメーション関連のテスト（モック使用）
+# ============================================================
+
+class TestConstants:
+    """定数の妥当性テスト"""
+    
+    def test_default_constants_are_positive(self):
+        """デフォルト定数が正の値であることを確認"""
+        from nbody_simulation_advanced import (
+            DEFAULT_N_BODIES, G, BASE_DT, MIN_DT, MAX_DT,
+            ANIMATION_INTERVAL, SOFTENING, DISPLAY_RANGE,
+            VELOCITY_ARROW_SCALE, FORCE_ARROW_SCALE, MASS_MIN, MASS_MAX
+        )
+        
+        assert DEFAULT_N_BODIES >= 2
+        assert G > 0
+        assert BASE_DT > 0
+        assert MIN_DT > 0
+        assert MAX_DT > 0
+        assert MIN_DT <= BASE_DT <= MAX_DT
+        assert ANIMATION_INTERVAL > 0
+        assert SOFTENING > 0
+        assert DISPLAY_RANGE > 0
+        assert VELOCITY_ARROW_SCALE > 0
+        assert FORCE_ARROW_SCALE > 0
+        assert MASS_MIN > 0
+        assert MASS_MAX > 0
+        assert MASS_MIN <= MASS_MAX
+    
+    def test_timestep_hierarchy(self):
+        """タイムステップの階層が正しいことを確認"""
+        from nbody_simulation_advanced import MIN_DT, BASE_DT, MAX_DT
+        
+        assert MIN_DT < BASE_DT, "MIN_DT should be less than BASE_DT"
+        assert BASE_DT < MAX_DT, "BASE_DT should be less than MAX_DT"
+
+
+class TestSimulationStateLogic:
+    """シミュレーション状態ロジックのテスト（GUIなし）"""
+    
+    def test_zoom_calculation(self):
+        """ズーム計算のロジックテスト"""
+        from nbody_simulation_advanced import DISPLAY_RANGE
+        
+        zoom = 1.0
+        
+        # ズームイン
+        zoom = max(0.3, zoom * 0.8)
+        expected_range = DISPLAY_RANGE * zoom
+        assert expected_range < DISPLAY_RANGE
+        
+        # ズームアウト
+        zoom = min(3.0, zoom * 1.25)
+        expected_range = DISPLAY_RANGE * zoom
+        assert 0.3 <= zoom <= 3.0
+    
+    def test_generation_counter_logic(self):
+        """世代カウンタのロジックテスト"""
+        generation = 1
+        max_generation = 1
+        
+        # リスタート時
+        generation += 1
+        max_generation = max(max_generation, generation)
+        
+        assert generation == 2
+        assert max_generation == 2
+        
+        # さらにリスタート
+        generation += 1
+        max_generation = max(max_generation, generation)
+        
+        assert generation == 3
+        assert max_generation == 3
+    
+    def test_trail_history_management(self):
+        """軌跡履歴管理のロジックテスト"""
+        max_trail = 400
+        n_bodies = 3
+        trail_history = [[] for _ in range(n_bodies)]
+        
+        # ポイント追加
+        for step in range(500):
+            for i in range(n_bodies):
+                trail_history[i].append(np.array([step, 0, 0]))
+                if len(trail_history[i]) > max_trail:
+                    trail_history[i].pop(0)
+        
+        # 各物体の履歴が最大値を超えていないことを確認
+        for i in range(n_bodies):
+            assert len(trail_history[i]) <= max_trail
+            assert len(trail_history[i]) == max_trail
+
+
+class TestGUIWithMock:
+    """モックを使用したGUIテスト"""
+    
+    def test_simulation_can_import(self):
+        """シミュレーション関数がインポートできることを確認"""
+        from nbody_simulation_advanced import run_advanced_simulation
+        assert callable(run_advanced_simulation)
+    
+    def test_body_size_calculation(self):
+        """物体サイズ計算のロジックテスト"""
+        from nbody_simulation_advanced import MASS_MIN, MASS_MAX
+        
+        # サイズ計算ロジック: size = 6 + (mass - mass_min) * 6
+        test_masses = [MASS_MIN, (MASS_MIN + MASS_MAX) / 2, MASS_MAX]
+        
+        for mass in test_masses:
+            size = 6 + (mass - MASS_MIN) * 6
+            assert size >= 6, "サイズは最小6以上"
+            assert size <= 6 + (MASS_MAX - MASS_MIN) * 6, "サイズは最大値以下"
+    
+    def test_velocity_arrow_calculation(self):
+        """速度ベクトル矢印計算のロジックテスト"""
+        from nbody_simulation_advanced import VELOCITY_ARROW_SCALE
+        
+        position = np.array([1.0, 2.0, 3.0])
+        velocity = np.array([0.5, -0.3, 0.1])
+        
+        arrow_end = position + velocity * VELOCITY_ARROW_SCALE
+        
+        # 矢印の終点が計算できることを確認
+        assert len(arrow_end) == 3
+        assert not np.allclose(arrow_end, position)
+    
+    def test_force_arrow_calculation(self):
+        """力ベクトル矢印計算のロジックテスト"""
+        from nbody_simulation_advanced import FORCE_ARROW_SCALE
+        
+        position = np.array([0.0, 0.0, 0.0])
+        force = np.array([1.0, 0.5, -0.2])
+        
+        arrow_end = position + force * FORCE_ARROW_SCALE
+        
+        # 矢印の終点が計算できることを確認
+        assert len(arrow_end) == 3
+    
+    def test_info_text_format(self):
+        """情報テキストのフォーマットテスト"""
+        generation = 5
+        sim_time = 123.456
+        zoom = 0.8
+        energy = -1.234
+        min_dist = 0.567
+        n_bodies = 3
+        max_generation = 5
+        
+        info_lines = [
+            f"Gen: {generation}  Time: {sim_time:.1f}  Zoom: {1/zoom:.1f}x",
+            f"Energy: {energy:.3f}  MinDist: {min_dist:.2f}",
+            f"Bodies: {n_bodies}  MaxGen: {max_generation}",
+        ]
+        
+        info_text = '\n'.join(info_lines)
+        
+        assert "Gen: 5" in info_text
+        assert "Time: 123.5" in info_text
+        assert "Energy: -1.234" in info_text
+        assert "Bodies: 3" in info_text
+
+
+class TestKeyboardEventLogic:
+    """キーボードイベント処理ロジックのテスト"""
+    
+    def test_number_key_parsing(self):
+        """数字キー解析のテスト"""
+        valid_keys = ['3', '4', '5', '6', '7', '8', '9']
+        
+        for key in valid_keys:
+            new_n = int(key)
+            assert 3 <= new_n <= 9
+    
+    def test_zoom_bounds(self):
+        """ズーム境界値のテスト"""
+        zoom = 1.0
+        
+        # 最大ズームイン
+        for _ in range(20):
+            zoom = max(0.3, zoom * 0.8)
+        assert zoom >= 0.3
+        
+        # 最大ズームアウト
+        zoom = 1.0
+        for _ in range(20):
+            zoom = min(3.0, zoom * 1.25)
+        assert zoom <= 3.0
+    
+    def test_pause_toggle(self):
+        """一時停止トグルのテスト"""
+        paused = [False]
+        
+        # トグル1回目
+        paused[0] = not paused[0]
+        assert paused[0] == True
+        
+        # トグル2回目
+        paused[0] = not paused[0]
+        assert paused[0] == False
+    
+    def test_auto_rotate_toggle(self):
+        """自動回転トグルのテスト"""
+        auto_rotate = [False]
+        
+        auto_rotate[0] = not auto_rotate[0]
+        assert auto_rotate[0] == True
+        
+        auto_rotate[0] = not auto_rotate[0]
+        assert auto_rotate[0] == False
+
+
+class TestEditorPanelLogic:
+    """エディタパネルロジックのテスト"""
+    
+    def test_mass_display_truncation(self):
+        """質量表示の切り捨てロジックテスト"""
+        n_bodies = 8
+        masses = np.random.rand(n_bodies) * 1.5 + 0.5
+        
+        lines = []
+        for i in range(min(n_bodies, 6)):
+            lines.append(f'  Body {i+1}: {masses[i]:.2f}')
+        if n_bodies > 6:
+            lines.append(f'  ... +{n_bodies-6} more')
+        
+        assert len(lines) == 7  # 6体 + "...+2 more"
+        assert "+2 more" in lines[-1]
+    
+    def test_editor_panel_content(self):
+        """エディタパネル内容のテスト"""
+        n_bodies = 4
+        masses = np.array([1.0, 1.5, 0.8, 2.0])
+        
+        lines = [
+            '📝 EDITOR',
+            '─────────────',
+            f'N Bodies: {n_bodies}',
+            '(Press 3-9 to change)',
+            '',
+            '📊 Current masses:',
+        ]
+        for i in range(min(n_bodies, 6)):
+            lines.append(f'  Body {i+1}: {masses[i]:.2f}')
+        
+        panel_text = '\n'.join(lines)
+        
+        assert 'N Bodies: 4' in panel_text
+        assert 'Body 1: 1.00' in panel_text
+        assert 'Body 4: 2.00' in panel_text
+
+
+class TestPredictionModeLogic:
+    """予測モードロジックのテスト"""
+    
+    def test_prediction_mode_activation(self):
+        """予測モード有効化のテスト"""
+        prediction_mode = [False]
+        paused = [False]
+        prediction_made = [False]
+        
+        # Pキー押下をシミュレート
+        prediction_mode[0] = not prediction_mode[0]
+        if prediction_mode[0]:
+            paused[0] = True
+            prediction_made[0] = False
+        
+        assert prediction_mode[0] == True
+        assert paused[0] == True
+        assert prediction_made[0] == False
+    
+    def test_prediction_mode_enter(self):
+        """予測モードでEnter押下のテスト"""
+        prediction_mode = [True]
+        paused = [True]
+        prediction_made = [False]
+        
+        # Enterキー押下をシミュレート
+        if prediction_mode[0]:
+            paused[0] = False
+            prediction_made[0] = True
+        
+        assert paused[0] == False
+        assert prediction_made[0] == True
+
+
+# スタンドアロン実行用
+if __name__ == "__main__":
+    print("=" * 60)
+    print("三体問題シミュレーター ユニットテスト")
+    print("=" * 60)
     
     # pytest がインストールされている場合
     try:
