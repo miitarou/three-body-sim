@@ -39,11 +39,7 @@ pip install numpy matplotlib
 ## ▶️ 実行
 
 ```bash
-# Learning Edition（推奨）
 python nbody_simulation_advanced.py
-
-# 2D版（8の字解など）
-python three_body_simulation.py
 ```
 
 ---
@@ -176,8 +172,8 @@ F = G × m₁ × m₂ / r²
 
 ```
 three-body-sim/
-├── nbody_simulation_advanced.py  # Learning Edition（推奨）
-├── three_body_simulation.py      # 2D版（8の字解デモ）
+├── nbody_simulation_advanced.py  # メインシミュレーター
+├── test_nbody.py                 # テストスイート
 ├── demo.gif                      # デモ動画
 └── README.md                     # このファイル
 ```
