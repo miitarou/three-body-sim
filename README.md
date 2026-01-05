@@ -22,7 +22,16 @@ N個の天体が万有引力で相互作用する様子をリアルタイムで�
 git clone https://github.com/miitarou/three-body-sim.git
 cd three-body-sim
 python3 -m venv venv
+
+# Linux/macOS:
 source venv/bin/activate
+
+# Windows (PowerShell):
+# .\venv\Scripts\Activate.ps1
+
+# Windows (cmd):
+# venv\Scripts\activate.bat
+
 pip install numpy matplotlib
 ```
 

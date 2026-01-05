@@ -42,20 +42,45 @@ MASS_MAX = 2.0
 # 物理計算
 # ============================================================
 
+def validate_parameters(n_bodies, masses=None, softening=None, mass_min=None, mass_max=None):
+    """パラメータのバリデーション"""
+    if n_bodies < 2:
+        raise ValueError(f"物体数は2以上である必要があります: {n_bodies}")
+    if n_bodies > 20:
+        raise ValueError(f"物体数が多すぎます（パフォーマンス警告）: {n_bodies}")
+    if masses is not None and np.any(masses <= 0):
+        raise ValueError(f"質量は正の値である必要があります")
+    if softening is not None and softening <= 0:
+        raise ValueError(f"ソフトニングは正の値である必要があります: {softening}")
+    if mass_min is not None and mass_max is not None:
+        if mass_min <= 0 or mass_max <= 0:
+            raise ValueError("質量範囲は正の値である必要があります")
+        if mass_min > mass_max:
+            raise ValueError("mass_min は mass_max 以下である必要があります")
+
+
 def compute_accelerations_vectorized(positions, masses, softening):
-    """ベクトル化された加速度計算"""
+    """完全ベクトル化された加速度計算（ループなし・高速化版）"""
     n = len(masses)
-    accelerations = np.zeros_like(positions)
     eps2 = softening ** 2
     
-    for i in range(n):
-        r_ij = positions - positions[i]
-        r2 = np.sum(r_ij ** 2, axis=1) + eps2
-        r2[i] = 1.0
-        inv_r3 = r2 ** (-1.5)
-        inv_r3[i] = 0.0
-        acc = G * np.sum(masses[:, np.newaxis] * r_ij * inv_r3[:, np.newaxis], axis=0)
-        accelerations[i] = acc
+    # 全ペア間の差分ベクトルを一括計算
+    # r_ij[i, j] = positions[j] - positions[i]
+    r_ij = positions[np.newaxis, :, :] - positions[:, np.newaxis, :]
+    
+    # 距離の二乗 + ソフトニング
+    r2 = np.sum(r_ij ** 2, axis=2) + eps2
+    np.fill_diagonal(r2, 1.0)  # 自己相互作用を避ける
+    
+    # 1/r³ 計算
+    inv_r3 = r2 ** (-1.5)
+    np.fill_diagonal(inv_r3, 0.0)
+    
+    # 加速度 = G * Σ(m_j * r_ij / |r_ij|³)
+    accelerations = G * np.sum(
+        masses[np.newaxis, :, np.newaxis] * r_ij * inv_r3[:, :, np.newaxis],
+        axis=1
+    )
     
     return accelerations
 
@@ -133,6 +158,9 @@ def compute_energy(positions, velocities, masses, softening):
 # ============================================================
 
 def generate_initial_conditions(n_bodies, mass_min, mass_max):
+    """初期条件生成（バリデーション付き）"""
+    validate_parameters(n_bodies, mass_min=mass_min, mass_max=mass_max)
+    
     np.random.seed(int(time.time() * 1000) % (2**32))
     
     masses = mass_min + np.random.rand(n_bodies) * (mass_max - mass_min)
