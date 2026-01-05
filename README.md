@@ -78,14 +78,16 @@ python three_body_simulation.py
 
 | # | 名前 | 発見者 | 特徴 |
 |---|------|--------|------|
-| 1 | Figure-8 Classic | Chenciner-Montgomery (2000) | 3体が8の字を描く有名な解 |
-| 2 | Figure-8 (I.2.A) | Šuvakov-Dmitrašinović (2013) | 8の字解のバリエーション |
-| 3 | Butterfly I | Šuvakov-Dmitrašinović (2013) | 蝶のような対称的な軌道 |
-| 4 | Lagrange Triangle | Lagrange (1772) | 正三角形を保ったまま回転 |
+| 1 ⭐ | **Figure-8 Classic** | Chenciner-Montgomery (2000) | 数学史上最も有名な三体周期解 |
+| 2 ⭐ | **Lagrange Triangle** | Lagrange (1772) | 正三角形を保ったまま回転（歴史的価値最高） |
+| 3 ⭐ | **Butterfly I** | Šuvakov-Dmitrašinović (2013) | 蝶のような美しい軌道 |
+| 4 | Figure-8 (I.2.A) | Šuvakov-Dmitrašinović (2013) | 8の字解のバリエーション |
 | 5 | Moth I | Šuvakov-Dmitrašinović (2013) | 蛾のような複雑な軌道 |
 | 6 | Yin-Yang Ia | Šuvakov-Dmitrašinović (2013) | 陰陽のような対称軌道 |
 | 7 | Yin-Yang Ib | Šuvakov-Dmitrašinović (2013) | Yin-Yangの別バリエーション |
 | 8 | Yin-Yang II | Šuvakov-Dmitrašinović (2013) | より複雑なYin-Yang軌道 |
+| 9 | Yin-Yang III | Šuvakov-Dmitrašinović (2013) | 長周期のYin-Yang軌道 |
+| 10 | Yarn | Šuvakov-Dmitrašinović (2013) | 糸玉のような複雑な軌道 |
 
 > **Note**: 周期解は理論上は永続しますが、数値計算の誤差が蓄積するため、時間が経つと軌道がずれることがあります。これは「カオス系の数値シミュレーションの限界」を体験できる教育的な現象です。
 

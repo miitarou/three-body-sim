@@ -36,6 +36,7 @@ class SimulationConfig:
     min_dt: float = 0.0001
     max_dt: float = 0.01
     softening: float = 0.05
+    softening_periodic: float = 0.001  # 周期解モード用（より純粋なニュートン力学）
     display_range: float = 1.5
     mass_min: float = 0.5
     mass_max: float = 2.0
@@ -75,9 +76,10 @@ MASS_MAX = 2.0
 # ============================================================
 
 PERIODIC_SOLUTIONS = [
+    # ⭐ おすすめ 1: 数学史上最も有名な三体周期解
     {
         "name": "Figure-8 Classic",
-        "label": "[1/8] Figure-8 Classic",
+        "label": "[1/10] Figure-8 Classic",
         "description": "Chenciner-Montgomery (2000)",
         "positions": np.array([
             [0.97000436, -0.24308753, 0.0],
@@ -91,25 +93,27 @@ PERIODIC_SOLUTIONS = [
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
+    # ⭐ おすすめ 2: 歴史的価値最高（1772年発見）
     {
-        "name": "Figure-8 (I.2.A)",
-        "label": "[2/8] Figure-8 (I.2.A)",
-        "description": "Suvakov-Dmitrasinovic (2013)",
+        "name": "Lagrange Triangle",
+        "label": "[2/10] Lagrange Triangle",
+        "description": "Lagrange (1772)",
         "positions": np.array([
-            [-1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0]
+            [0.0, 1.0, 0.0],
+            [np.sqrt(3)/2, -0.5, 0.0],
+            [-np.sqrt(3)/2, -0.5, 0.0]
         ]),
         "velocities": np.array([
-            [0.306893, 0.125507, 0.0],
-            [0.306893, 0.125507, 0.0],
-            [-0.613786, -0.251014, 0.0]
+            [0.5, 0.0, 0.0],
+            [-0.25, -np.sqrt(3)/4, 0.0],
+            [-0.25, np.sqrt(3)/4, 0.0]
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
+    # ⭐ おすすめ 3: 美しい蝶の軌道
     {
         "name": "Butterfly I",
-        "label": "[3/8] Butterfly I",
+        "label": "[3/10] Butterfly I",
         "description": "Suvakov-Dmitrasinovic I.8.A",
         "positions": np.array([
             [-1.0, 0.0, 0.0],
@@ -124,24 +128,24 @@ PERIODIC_SOLUTIONS = [
         "masses": np.array([1.0, 1.0, 1.0])
     },
     {
-        "name": "Lagrange Triangle",
-        "label": "[4/8] Lagrange Triangle",
-        "description": "Lagrange (1772)",
+        "name": "Figure-8 (I.2.A)",
+        "label": "[4/10] Figure-8 (I.2.A)",
+        "description": "Suvakov-Dmitrasinovic (2013)",
         "positions": np.array([
-            [0.0, 1.0, 0.0],
-            [np.sqrt(3)/2, -0.5, 0.0],
-            [-np.sqrt(3)/2, -0.5, 0.0]
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
         ]),
         "velocities": np.array([
-            [0.5, 0.0, 0.0],
-            [-0.25, -np.sqrt(3)/4, 0.0],
-            [-0.25, np.sqrt(3)/4, 0.0]
+            [0.306893, 0.125507, 0.0],
+            [0.306893, 0.125507, 0.0],
+            [-0.613786, -0.251014, 0.0]
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
     {
         "name": "Moth I",
-        "label": "[5/8] Moth I",
+        "label": "[5/10] Moth I",
         "description": "Suvakov-Dmitrasinovic I.B.1",
         "positions": np.array([
             [-1.0, 0.0, 0.0],
@@ -157,7 +161,7 @@ PERIODIC_SOLUTIONS = [
     },
     {
         "name": "Yin-Yang Ia",
-        "label": "[6/8] Yin-Yang Ia",
+        "label": "[6/10] Yin-Yang Ia",
         "description": "Suvakov-Dmitrasinovic II.C.2a",
         "positions": np.array([
             [-1.0, 0.0, 0.0],
@@ -173,7 +177,7 @@ PERIODIC_SOLUTIONS = [
     },
     {
         "name": "Yin-Yang Ib",
-        "label": "[7/8] Yin-Yang Ib",
+        "label": "[7/10] Yin-Yang Ib",
         "description": "Suvakov-Dmitrasinovic II.C.2b",
         "positions": np.array([
             [-1.0, 0.0, 0.0],
@@ -189,7 +193,7 @@ PERIODIC_SOLUTIONS = [
     },
     {
         "name": "Yin-Yang II",
-        "label": "[8/8] Yin-Yang II",
+        "label": "[8/10] Yin-Yang II",
         "description": "Suvakov-Dmitrasinovic II.C.3a",
         "positions": np.array([
             [-1.0, 0.0, 0.0],
@@ -200,6 +204,38 @@ PERIODIC_SOLUTIONS = [
             [0.41682, 0.33033, 0.0],
             [0.41682, 0.33033, 0.0],
             [-0.83364, -0.66066, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang III",
+        "label": "[9/10] Yin-Yang III",
+        "description": "Suvakov-Dmitrasinovic III.9.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.513150, 0.289437, 0.0],
+            [0.513150, 0.289437, 0.0],
+            [-1.02630, -0.578874, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yarn",
+        "label": "[10/10] Yarn",
+        "description": "Suvakov-Dmitrasinovic III.13.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.416444, 0.336397, 0.0],
+            [0.416444, 0.336397, 0.0],
+            [-0.832888, -0.672794, 0.0]
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
@@ -472,15 +508,22 @@ class NBodySimulator:
             n_bodies=self.config.n_bodies
         )
     
+    def get_effective_softening(self) -> float:
+        """現在のモードに応じたソフトニング値を返す"""
+        if self.state.periodic_mode:
+            return self.config.softening_periodic
+        return self.config.softening
+    
     def step(self, steps: int = 1) -> float:
         """シミュレーションをn ステップ進める"""
+        softening = self.get_effective_softening()
         total_dt = 0.0
         for _ in range(steps):
             self.state.positions, self.state.velocities, dt = rk4_step_adaptive(
                 self.state.positions,
                 self.state.velocities,
                 self.state.masses,
-                self.config.softening,
+                softening,
                 self.config.base_dt,
                 self.config.min_dt,
                 self.config.max_dt,
@@ -542,7 +585,7 @@ class NBodySimulator:
             self.state.positions,
             self.state.velocities,
             self.state.masses,
-            self.config.softening,
+            self.get_effective_softening(),
             self.config.g
         )
     
@@ -555,7 +598,7 @@ class NBodySimulator:
         return compute_forces(
             self.state.positions,
             self.state.masses,
-            self.config.softening,
+            self.get_effective_softening(),
             self.config.g
         )
     
