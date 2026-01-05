@@ -196,7 +196,9 @@ three-body-sim/
 ## 📖 参考文献
 
 - Chenciner & Montgomery (2000): "A remarkable periodic solution of the three-body problem"
-- arXiv:math/0011268
+- Šuvakov & Dmitrašinović (2013): "Three Classes of Newtonian Three-Body Planar Periodic Orbits"
+- arXiv:math/0011268 (Chenciner & Montgomery)
+- arXiv:1303.0181 (Šuvakov & Dmitrašinović)
 
 ---
 
@@ -208,5 +210,7 @@ MIT License
 
 ## 🙏 謝辞
 
+- **Joseph-Louis Lagrange**: 1772年に三体問題の正三角形解を発見し、周期解研究の礎を築いた偉大な数学者
+- **Milovan Šuvakov & Veljko Dmitrašinović**: 2013年に13種類もの新しい周期解を発見し、この分野に革命をもたらした研究者たち
 - 8の字解の発見者 Chenciner & Montgomery
 - Matplotlib / NumPy 開発チーム
