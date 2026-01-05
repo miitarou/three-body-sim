@@ -507,6 +507,17 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
     
     def create_plot_objects(n: int) -> None:
         nonlocal bodies, trails, velocity_arrows, force_arrows, colors
+        
+        # 既存のプロットオブジェクトをAxesから削除
+        for body in bodies:
+            body.remove()
+        for trail in trails:
+            trail.remove()
+        for arrow in velocity_arrows:
+            arrow.remove()
+        for force in force_arrows:
+            force.remove()
+        
         bodies.clear()
         trails.clear()
         velocity_arrows.clear()
