@@ -42,10 +42,7 @@ pip install numpy matplotlib
 # Learning Edition（推奨）
 python nbody_simulation_advanced.py
 
-# シンプル版
-python three_body_simulation_3d.py
-
-# 2D版
+# 2D版（8の字解など）
 python three_body_simulation.py
 ```
 
@@ -160,8 +157,7 @@ F = G × m₁ × m₂ / r²
 ```
 three-body-sim/
 ├── nbody_simulation_advanced.py  # Learning Edition（推奨）
-├── three_body_simulation_3d.py   # シンプル3D版
-├── three_body_simulation.py      # 2D版
+├── three_body_simulation.py      # 2D版（8の字解デモ）
 ├── demo.gif                      # デモ動画
 └── README.md                     # このファイル
 ```
