@@ -179,11 +179,168 @@ class TestEdgeCases:
             generate_initial_conditions(3, 2.0, 1.0)  # min > max
 
 
-# スタンドアロン実行用
-if __name__ == "__main__":
-    print("=" * 60)
-    print("三体問題シミュレーター ユニットテスト")
-    print("=" * 60)
+class TestRK4Integration:
+    """RK4積分のテスト"""
+    
+    def test_rk4_returns_correct_shape(self):
+        """RK4が正しい形状の配列を返すことを確認"""
+        positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        velocities = np.array([[0.0, 0.1, 0.0], [0.0, -0.1, 0.0], [0.1, 0.0, 0.0]])
+        masses = np.array([1.0, 1.0, 1.0])
+        
+        new_pos, new_vel, dt = rk4_step_adaptive(
+            positions, velocities, masses, SOFTENING, BASE_DT, MIN_DT, MAX_DT
+        )
+        
+        assert new_pos.shape == positions.shape
+        assert new_vel.shape == velocities.shape
+        assert isinstance(dt, float)
+        assert dt > 0
+    
+    def test_rk4_changes_positions(self):
+        """RK4によって位置が変化することを確認"""
+        positions = np.array([[0.5, 0.0, 0.0], [-0.5, 0.0, 0.0], [0.0, 0.5, 0.0]])
+        velocities = np.array([[0.0, 0.2, 0.0], [0.0, -0.2, 0.0], [0.1, 0.0, 0.0]])
+        masses = np.array([1.0, 1.0, 1.0])
+        
+        new_pos, new_vel, _ = rk4_step_adaptive(
+            positions, velocities, masses, SOFTENING, BASE_DT, MIN_DT, MAX_DT
+        )
+        
+        # 位置が変化していることを確認
+        assert not np.allclose(new_pos, positions)
+    
+    def test_rk4_velocity_changes_due_to_gravity(self):
+        """重力により速度が変化することを確認"""
+        positions = np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]])
+        velocities = np.zeros((2, 3))  # 初期速度ゼロ
+        masses = np.array([1.0, 1.0])
+        
+        new_pos, new_vel, _ = rk4_step_adaptive(
+            positions, velocities, masses, SOFTENING, BASE_DT, MIN_DT, MAX_DT
+        )
+        
+        # 速度が変化していることを確認（重力により引き合う）
+        assert not np.allclose(new_vel, velocities)
+        # 物体0は+x方向へ、物体1は-x方向へ加速
+        assert new_vel[0, 0] > 0
+        assert new_vel[1, 0] < 0
+
+
+class TestAdaptiveTimestep:
+    """適応タイムステップのテスト"""
+    
+    def test_timestep_decreases_when_close(self):
+        """物体が近いとタイムステップが小さくなることを確認"""
+        from nbody_simulation_advanced import adaptive_timestep
+        
+        # 遠い配置
+        far_positions = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+        dt_far = adaptive_timestep(far_positions, BASE_DT, MIN_DT, MAX_DT)
+        
+        # 近い配置
+        close_positions = np.array([[0.0, 0.0, 0.0], [0.1, 0.0, 0.0]])
+        dt_close = adaptive_timestep(close_positions, BASE_DT, MIN_DT, MAX_DT)
+        
+        assert dt_close <= dt_far, "近い物体ではタイムステップが小さくなるべき"
+    
+    def test_timestep_within_bounds(self):
+        """タイムステップが指定範囲内に収まることを確認"""
+        from nbody_simulation_advanced import adaptive_timestep
+        
+        # 非常に近い配置
+        very_close = np.array([[0.0, 0.0, 0.0], [0.01, 0.0, 0.0]])
+        dt = adaptive_timestep(very_close, BASE_DT, MIN_DT, MAX_DT)
+        
+        assert dt >= MIN_DT, f"タイムステップが最小値を下回っています: {dt}"
+        assert dt <= MAX_DT, f"タイムステップが最大値を超えています: {dt}"
+
+
+class TestBoundaryChecking:
+    """境界チェックのテスト"""
+    
+    def test_in_bounds(self):
+        """範囲内の物体が正しく判定されることを確認"""
+        from nbody_simulation_advanced import is_out_of_bounds
+        
+        positions = np.array([[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]])
+        assert not is_out_of_bounds(positions, 1.0)
+    
+    def test_out_of_bounds(self):
+        """範囲外の物体が正しく判定されることを確認"""
+        from nbody_simulation_advanced import is_out_of_bounds
+        
+        positions = np.array([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]])
+        assert is_out_of_bounds(positions, 1.0)
+    
+    def test_boundary_edge_case(self):
+        """境界上の物体の判定"""
+        from nbody_simulation_advanced import is_out_of_bounds
+        
+        positions = np.array([[1.0, 0.0, 0.0]])  # 境界上
+        assert not is_out_of_bounds(positions, 1.0)  # 境界上は範囲内
+        
+        positions = np.array([[1.0001, 0.0, 0.0]])  # 境界をわずかに超える
+        assert is_out_of_bounds(positions, 1.0)
+
+
+class TestNumericalStability:
+    """数値安定性のテスト"""
+    
+    def test_no_nan_or_inf(self):
+        """計算結果にNaNやInfが含まれないことを確認"""
+        positions, velocities, masses = generate_initial_conditions(5, 0.5, 2.0)
+        
+        # 100ステップ実行
+        for _ in range(100):
+            positions, velocities, _ = rk4_step_adaptive(
+                positions, velocities, masses, SOFTENING, BASE_DT, MIN_DT, MAX_DT
+            )
+            
+            assert not np.any(np.isnan(positions)), "NaNが検出されました"
+            assert not np.any(np.isinf(positions)), "Infが検出されました"
+            assert not np.any(np.isnan(velocities)), "NaNが検出されました"
+            assert not np.any(np.isinf(velocities)), "Infが検出されました"
+    
+    def test_softening_prevents_divergence(self):
+        """ソフトニングが発散を防ぐことを確認"""
+        # 非常に近い2物体
+        positions = np.array([[0.0, 0.0, 0.0], [0.001, 0.0, 0.0]])
+        masses = np.array([10.0, 10.0])  # 大きな質量
+        
+        # ソフトニングありで計算
+        acc = compute_accelerations_vectorized(positions, masses, SOFTENING)
+        
+        assert not np.any(np.isnan(acc)), "ソフトニングがあってもNaNが発生"
+        assert not np.any(np.isinf(acc)), "ソフトニングがあってもInfが発生"
+        # 加速度が有限の値であることを確認
+        assert np.all(np.abs(acc) < 1e6), "加速度が異常に大きい"
+
+
+class TestMinDistance:
+    """最小距離計算のテスト"""
+    
+    def test_min_distance_two_bodies(self):
+        """2体間の最小距離が正しく計算されることを確認"""
+        from nbody_simulation_advanced import compute_min_distance
+        
+        positions = np.array([[0.0, 0.0, 0.0], [3.0, 4.0, 0.0]])  # 距離5
+        min_dist = compute_min_distance(positions)
+        
+        assert np.isclose(min_dist, 5.0)
+    
+    def test_min_distance_three_bodies(self):
+        """3体間の最小距離が正しく計算されることを確認"""
+        from nbody_simulation_advanced import compute_min_distance
+        
+        positions = np.array([
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],  # 物体0との距離: 10
+            [0.0, 2.0, 0.0]   # 物体0との距離: 2 ← 最小
+        ])
+        min_dist = compute_min_distance(positions)
+        
+        assert np.isclose(min_dist, 2.0)
     
     # pytest がインストールされている場合
     try:
