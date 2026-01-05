@@ -35,8 +35,12 @@ class SimulationConfig:
     base_dt: float = 0.001
     min_dt: float = 0.0001
     max_dt: float = 0.01
+    # Plummerソフトニング: F = Gm1m2 / (r^2 + ε^2)^(3/2)
+    # 通常モード: 極端な接近時の数値発散（1/r^2 → ∞）を防止するために必要
     softening: float = 0.05
-    softening_periodic: float = 0.001  # 周期解モード用（より純粋なニュートン力学）
+    # 周期解モード: 周期解は純粋なニュートン力学（ε=0）で発見されたものであるため、
+    # ソフトニングが大きいと軌道が理論値からずれる。より純粋な1/r^2に近づけるため極小化。
+    softening_periodic: float = 0.001
     display_range: float = 1.5
     mass_min: float = 0.5
     mass_max: float = 2.0
