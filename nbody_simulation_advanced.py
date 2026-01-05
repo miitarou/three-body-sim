@@ -12,6 +12,9 @@ N体問題シミュレーター Advanced Edition + Learning Mode
 計算手法: 4次ルンゲ＝クッタ法（RK4）+ 適応タイムステップ
 """
 
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional, Tuple, List, Callable
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -21,9 +24,38 @@ import time
 
 
 # ============================================================
-# デフォルト設定
+# 設定クラス
 # ============================================================
 
+@dataclass
+class SimulationConfig:
+    """シミュレーション設定"""
+    n_bodies: int = 3
+    g: float = 1.0
+    base_dt: float = 0.001
+    min_dt: float = 0.0001
+    max_dt: float = 0.01
+    softening: float = 0.05
+    display_range: float = 1.5
+    mass_min: float = 0.5
+    mass_max: float = 2.0
+    animation_interval: int = 30
+    velocity_arrow_scale: float = 0.3
+    force_arrow_scale: float = 0.15
+    max_trail: int = 400
+    steps_per_frame: int = 10
+
+    def validate(self) -> None:
+        """設定のバリデーション"""
+        validate_parameters(
+            self.n_bodies,
+            mass_min=self.mass_min,
+            mass_max=self.mass_max,
+            softening=self.softening
+        )
+
+
+# デフォルト設定（後方互換性のため）
 DEFAULT_N_BODIES = 3
 G = 1.0
 BASE_DT = 0.001
@@ -39,17 +71,23 @@ MASS_MAX = 2.0
 
 
 # ============================================================
-# 物理計算
+# バリデーション
 # ============================================================
 
-def validate_parameters(n_bodies, masses=None, softening=None, mass_min=None, mass_max=None):
+def validate_parameters(
+    n_bodies: int,
+    masses: Optional[np.ndarray] = None,
+    softening: Optional[float] = None,
+    mass_min: Optional[float] = None,
+    mass_max: Optional[float] = None
+) -> None:
     """パラメータのバリデーション"""
     if n_bodies < 2:
         raise ValueError(f"物体数は2以上である必要があります: {n_bodies}")
     if n_bodies > 20:
         raise ValueError(f"物体数が多すぎます（パフォーマンス警告）: {n_bodies}")
     if masses is not None and np.any(masses <= 0):
-        raise ValueError(f"質量は正の値である必要があります")
+        raise ValueError("質量は正の値である必要があります")
     if softening is not None and softening <= 0:
         raise ValueError(f"ソフトニングは正の値である必要があります: {softening}")
     if mass_min is not None and mass_max is not None:
@@ -59,7 +97,16 @@ def validate_parameters(n_bodies, masses=None, softening=None, mass_min=None, ma
             raise ValueError("mass_min は mass_max 以下である必要があります")
 
 
-def compute_accelerations_vectorized(positions, masses, softening):
+# ============================================================
+# 物理計算（純粋関数）
+# ============================================================
+
+def compute_accelerations_vectorized(
+    positions: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    g: float = G
+) -> np.ndarray:
     """完全ベクトル化された加速度計算（ループなし・高速化版）"""
     n = len(masses)
     eps2 = softening ** 2
@@ -77,7 +124,7 @@ def compute_accelerations_vectorized(positions, masses, softening):
     np.fill_diagonal(inv_r3, 0.0)
     
     # 加速度 = G * Σ(m_j * r_ij / |r_ij|³)
-    accelerations = G * np.sum(
+    accelerations = g * np.sum(
         masses[np.newaxis, :, np.newaxis] * r_ij * inv_r3[:, :, np.newaxis],
         axis=1
     )
@@ -85,7 +132,12 @@ def compute_accelerations_vectorized(positions, masses, softening):
     return accelerations
 
 
-def compute_forces(positions, masses, softening):
+def compute_forces(
+    positions: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    g: float = G
+) -> np.ndarray:
     """各物体にかかる力を計算（力ベクトル表示用）"""
     n = len(masses)
     forces = np.zeros_like(positions)
@@ -96,14 +148,15 @@ def compute_forces(positions, masses, softening):
             if i != j:
                 r_ij = positions[j] - positions[i]
                 r2 = np.dot(r_ij, r_ij) + eps2
-                force_mag = G * masses[i] * masses[j] / r2
+                force_mag = g * masses[i] * masses[j] / r2
                 force_dir = r_ij / np.sqrt(r2)
                 forces[i] += force_mag * force_dir
     
     return forces
 
 
-def compute_min_distance(positions):
+def compute_min_distance(positions: np.ndarray) -> float:
+    """最小距離を計算"""
     n = len(positions)
     min_dist = float('inf')
     for i in range(n):
@@ -113,27 +166,43 @@ def compute_min_distance(positions):
     return min_dist
 
 
-def adaptive_timestep(positions, base_dt, min_dt, max_dt):
+def adaptive_timestep(
+    positions: np.ndarray,
+    base_dt: float,
+    min_dt: float,
+    max_dt: float
+) -> float:
+    """適応タイムステップを計算"""
     min_dist = compute_min_distance(positions)
     factor = min(1.0, min_dist / 0.3)
     dt = base_dt * factor
     return max(min_dt, min(max_dt, dt))
 
 
-def rk4_step_adaptive(positions, velocities, masses, softening, base_dt, min_dt, max_dt):
+def rk4_step_adaptive(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    base_dt: float,
+    min_dt: float,
+    max_dt: float,
+    g: float = G
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """適応タイムステップ付きRK4積分"""
     dt = adaptive_timestep(positions, base_dt, min_dt, max_dt)
     
     k1_r = velocities
-    k1_v = compute_accelerations_vectorized(positions, masses, softening)
+    k1_v = compute_accelerations_vectorized(positions, masses, softening, g)
     
     k2_r = velocities + 0.5 * dt * k1_v
-    k2_v = compute_accelerations_vectorized(positions + 0.5 * dt * k1_r, masses, softening)
+    k2_v = compute_accelerations_vectorized(positions + 0.5 * dt * k1_r, masses, softening, g)
     
     k3_r = velocities + 0.5 * dt * k2_v
-    k3_v = compute_accelerations_vectorized(positions + 0.5 * dt * k2_r, masses, softening)
+    k3_v = compute_accelerations_vectorized(positions + 0.5 * dt * k2_r, masses, softening, g)
     
     k4_r = velocities + dt * k3_v
-    k4_v = compute_accelerations_vectorized(positions + dt * k3_r, masses, softening)
+    k4_v = compute_accelerations_vectorized(positions + dt * k3_r, masses, softening, g)
     
     new_pos = positions + (dt / 6.0) * (k1_r + 2*k2_r + 2*k3_r + k4_r)
     new_vel = velocities + (dt / 6.0) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
@@ -141,7 +210,14 @@ def rk4_step_adaptive(positions, velocities, masses, softening, base_dt, min_dt,
     return new_pos, new_vel, dt
 
 
-def compute_energy(positions, velocities, masses, softening):
+def compute_energy(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    g: float = G
+) -> float:
+    """全エネルギーを計算"""
     n = len(masses)
     eps2 = softening ** 2
     ke = 0.5 * np.sum(masses * np.sum(velocities**2, axis=1))
@@ -149,15 +225,26 @@ def compute_energy(positions, velocities, masses, softening):
     for i in range(n):
         for j in range(i+1, n):
             r2 = np.sum((positions[j] - positions[i])**2)
-            pe -= G * masses[i] * masses[j] / np.sqrt(r2 + eps2)
+            pe -= g * masses[i] * masses[j] / np.sqrt(r2 + eps2)
     return ke + pe
 
 
+def is_out_of_bounds(positions: np.ndarray, bound: float) -> bool:
+    """境界外かどうかを判定"""
+    return np.any(np.abs(positions) > bound)
+
+
 # ============================================================
-# 初期条件
+# 初期条件生成
 # ============================================================
 
-def generate_initial_conditions(n_bodies, mass_min, mass_max):
+def generate_initial_conditions(
+    n_bodies: int,
+    mass_min: float,
+    mass_max: float,
+    softening: float = SOFTENING,
+    g: float = G
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """初期条件生成（バリデーション付き）"""
     validate_parameters(n_bodies, mass_min=mass_min, mass_max=mass_max)
     
@@ -173,69 +260,191 @@ def generate_initial_conditions(n_bodies, mass_min, mass_max):
     total_momentum = np.sum(masses[:, np.newaxis] * velocities, axis=0)
     velocities -= total_momentum / np.sum(masses)
     
-    energy = compute_energy(positions, velocities, masses, SOFTENING)
+    energy = compute_energy(positions, velocities, masses, softening, g)
     while energy > -0.3:
         velocities *= 0.9
-        energy = compute_energy(positions, velocities, masses, SOFTENING)
+        energy = compute_energy(positions, velocities, masses, softening, g)
     
     return positions, velocities, masses
 
 
-def is_out_of_bounds(positions, bound):
-    return np.any(np.abs(positions) > bound)
+# ============================================================
+# シミュレーション状態
+# ============================================================
+
+@dataclass
+class SimulationState:
+    """シミュレーション状態"""
+    positions: np.ndarray
+    velocities: np.ndarray
+    masses: np.ndarray
+    n_bodies: int
+    generation: int = 1
+    sim_time: float = 0.0
+    max_generation: int = 1
+    
+    # UIの状態
+    paused: bool = False
+    auto_rotate: bool = False
+    show_forces: bool = False
+    show_editor: bool = False
+    prediction_mode: bool = False
+    prediction_made: bool = False
+    
+    # 視点
+    azim: float = 30.0
+    zoom: float = 1.0
+    
+    # 軌跡
+    trail_history: List[List[np.ndarray]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.trail_history:
+            self.trail_history = [[] for _ in range(self.n_bodies)]
 
 
 # ============================================================
-# メインシミュレーター
+# シミュレーター クラス
 # ============================================================
 
-def run_advanced_simulation():
-    """フル機能版N体シミュレーター + 教育モード"""
+class NBodySimulator:
+    """N体シミュレーター"""
     
-    n_bodies = DEFAULT_N_BODIES
-    softening = SOFTENING
-    mass_min = MASS_MIN
-    mass_max = MASS_MAX
+    def __init__(self, config: Optional[SimulationConfig] = None):
+        self.config = config or SimulationConfig()
+        self.config.validate()
+        self.state = self._create_initial_state()
     
-    positions, velocities, masses = generate_initial_conditions(n_bodies, mass_min, mass_max)
+    def _create_initial_state(self) -> SimulationState:
+        """初期状態を作成"""
+        positions, velocities, masses = generate_initial_conditions(
+            self.config.n_bodies,
+            self.config.mass_min,
+            self.config.mass_max,
+            self.config.softening,
+            self.config.g
+        )
+        return SimulationState(
+            positions=positions,
+            velocities=velocities,
+            masses=masses,
+            n_bodies=self.config.n_bodies
+        )
     
-    # 状態変数
-    paused = [False]
-    auto_rotate = [False]
-    show_forces = [False]
-    show_editor = [False]
-    prediction_mode = [False]
-    prediction_made = [False]
-    user_prediction = [""]
+    def step(self, steps: int = 1) -> float:
+        """シミュレーションをn ステップ進める"""
+        total_dt = 0.0
+        for _ in range(steps):
+            self.state.positions, self.state.velocities, dt = rk4_step_adaptive(
+                self.state.positions,
+                self.state.velocities,
+                self.state.masses,
+                self.config.softening,
+                self.config.base_dt,
+                self.config.min_dt,
+                self.config.max_dt,
+                self.config.g
+            )
+            self.state.sim_time += dt
+            total_dt += dt
+        return total_dt
     
-    generation = [1]
-    sim_time = [0.0]
-    azim = [30]
-    zoom = [1.0]
-    display_range = [DISPLAY_RANGE]
+    def restart(self) -> None:
+        """新しい初期条件でリスタート"""
+        self.state.generation += 1
+        self.state.max_generation = max(self.state.max_generation, self.state.generation)
+        self.state.positions, self.state.velocities, self.state.masses = generate_initial_conditions(
+            self.state.n_bodies,
+            self.config.mass_min,
+            self.config.mass_max,
+            self.config.softening,
+            self.config.g
+        )
+        self.state.sim_time = 0.0
+        self.state.trail_history = [[] for _ in range(self.state.n_bodies)]
+        self.state.prediction_mode = False
     
-    stats = {
-        'max_generation': 1,
-        'generation_times': [],
-    }
+    def change_n_bodies(self, new_n: int) -> None:
+        """物体数を変更"""
+        if new_n == self.state.n_bodies:
+            return
+        
+        validate_parameters(new_n, mass_min=self.config.mass_min, mass_max=self.config.mass_max)
+        
+        self.state.n_bodies = new_n
+        self.state.positions, self.state.velocities, self.state.masses = generate_initial_conditions(
+            new_n,
+            self.config.mass_min,
+            self.config.mass_max,
+            self.config.softening,
+            self.config.g
+        )
+        self.state.sim_time = 0.0
+        self.state.trail_history = [[] for _ in range(new_n)]
+        self.state.generation += 1
+        print(f"🔢 Changed to {new_n} bodies - Generation {self.state.generation}")
     
-    max_trail = 400
-    trail_history = [[] for _ in range(n_bodies)]
+    def update_trails(self) -> None:
+        """軌跡を更新"""
+        for i in range(self.state.n_bodies):
+            self.state.trail_history[i].append(self.state.positions[i].copy())
+            if len(self.state.trail_history[i]) > self.config.max_trail:
+                self.state.trail_history[i].pop(0)
     
-    colors = plt.cm.tab10(np.linspace(0, 1, max(n_bodies, 10)))[:n_bodies]
+    def is_out_of_bounds(self) -> bool:
+        """物体が範囲外かどうか"""
+        return is_out_of_bounds(self.state.positions, self.config.display_range * self.state.zoom)
     
-    # ============================================================
+    def get_energy(self) -> float:
+        """現在の全エネルギー"""
+        return compute_energy(
+            self.state.positions,
+            self.state.velocities,
+            self.state.masses,
+            self.config.softening,
+            self.config.g
+        )
+    
+    def get_min_distance(self) -> float:
+        """現在の最小距離"""
+        return compute_min_distance(self.state.positions)
+    
+    def get_forces(self) -> np.ndarray:
+        """力ベクトルを取得"""
+        return compute_forces(
+            self.state.positions,
+            self.state.masses,
+            self.config.softening,
+            self.config.g
+        )
+    
+    def run(self) -> None:
+        """GUIを起動して実行"""
+        run_simulation_gui(self)
+
+
+# ============================================================
+# GUI / アニメーション
+# ============================================================
+
+def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
+    """シミュレーションGUIを実行"""
+    
+    config = simulator.config
+    state = simulator.state
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, max(state.n_bodies, 10)))[:state.n_bodies]
+    
     # プロット設定
-    # ============================================================
-    
     fig = plt.figure(figsize=(14, 10), facecolor='#1a1a2e')
     fig.canvas.manager.set_window_title('N-Body Problem Simulator - Learning Edition')
     
     # メイン3Dプロット
+    display_range = config.display_range
     ax_3d = fig.add_axes([0.05, 0.1, 0.65, 0.85], projection='3d', facecolor='#1a1a2e')
-    ax_3d.set_xlim(-display_range[0], display_range[0])
-    ax_3d.set_ylim(-display_range[0], display_range[0])
-    ax_3d.set_zlim(-display_range[0], display_range[0])
+    ax_3d.set_xlim(-display_range, display_range)
+    ax_3d.set_ylim(-display_range, display_range)
+    ax_3d.set_zlim(-display_range, display_range)
     ax_3d.set_xlabel('X', color='white')
     ax_3d.set_ylabel('Y', color='white')
     ax_3d.set_zlabel('Z', color='white')
@@ -248,13 +457,13 @@ def run_advanced_simulation():
     ax_3d.yaxis.pane.set_edgecolor('white')
     ax_3d.zaxis.pane.set_edgecolor('white')
     
-    # 情報パネル（左下）
+    # 情報パネル
     info_text = fig.text(0.02, 0.02, '', color='#00ff88', fontsize=9,
                          fontfamily='monospace', verticalalignment='bottom',
                          bbox=dict(boxstyle='round', facecolor='#0a0a1a', 
                                    edgecolor='#00ff88', alpha=0.9))
     
-    # 操作説明パネル（右側）
+    # 操作説明パネル
     controls_text = fig.text(0.72, 0.95, 
         '🎮 CONTROLS\n'
         '─────────────\n'
@@ -274,7 +483,7 @@ def run_advanced_simulation():
         bbox=dict(boxstyle='round', facecolor='#0a0a1a', 
                   edgecolor='#444444', alpha=0.9))
     
-    # エディタパネル（右側、非表示から開始）
+    # エディタパネル
     editor_text = fig.text(0.72, 0.55, '', color='#ffaa00', fontsize=9,
                           fontfamily='monospace', verticalalignment='top',
                           bbox=dict(boxstyle='round', facecolor='#1a1a0a', 
@@ -290,81 +499,100 @@ def run_advanced_simulation():
                                         edgecolor='#ff6b6b', alpha=0.9),
                               visible=False)
     
-    # 物体
-    bodies = []
-    trails = []
-    velocity_arrows = []
-    force_arrows = []
+    # 描画オブジェクト
+    bodies: List = []
+    trails: List = []
+    velocity_arrows: List = []
+    force_arrows: List = []
     
-    for i in range(n_bodies):
-        body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=10,
-                          markeredgecolor='white', markeredgewidth=1)
-        bodies.append(body)
-        trail, = ax_3d.plot([], [], [], '-', color=colors[i], alpha=0.4, linewidth=1)
-        trails.append(trail)
-        arrow, = ax_3d.plot([], [], [], '-', color=colors[i], linewidth=1.5, alpha=0.7)
-        velocity_arrows.append(arrow)
-        # 力ベクトル（赤系で表示）
-        force, = ax_3d.plot([], [], [], '-', color='#ff4444', linewidth=2, alpha=0.8)
-        force_arrows.append(force)
+    def create_plot_objects(n: int) -> None:
+        nonlocal bodies, trails, velocity_arrows, force_arrows, colors
+        bodies.clear()
+        trails.clear()
+        velocity_arrows.clear()
+        force_arrows.clear()
+        colors = plt.cm.tab10(np.linspace(0, 1, max(n, 10)))[:n]
+        
+        for i in range(n):
+            body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=10,
+                              markeredgecolor='white', markeredgewidth=1)
+            bodies.append(body)
+            trail, = ax_3d.plot([], [], [], '-', color=colors[i], alpha=0.4, linewidth=1)
+            trails.append(trail)
+            arrow, = ax_3d.plot([], [], [], '-', color=colors[i], linewidth=1.5, alpha=0.7)
+            velocity_arrows.append(arrow)
+            force, = ax_3d.plot([], [], [], '-', color='#ff4444', linewidth=2, alpha=0.8)
+            force_arrows.append(force)
     
-    state = {
-        'positions': positions,
-        'velocities': velocities,
-        'masses': masses,
-        'n_bodies': n_bodies
-    }
+    create_plot_objects(state.n_bodies)
     
-    # 力ベクトルのラベル
     force_label = fig.text(0.72, 0.08, '', color='#ff4444', fontsize=8,
                           fontfamily='monospace', visible=False)
     
-    # ============================================================
-    # イベントハンドラ
-    # ============================================================
-    
-    def on_key(event):
-        nonlocal trail_history
+    def update_editor_panel() -> None:
+        lines = [
+            '📝 EDITOR',
+            '─────────────',
+            f'N Bodies: {state.n_bodies}',
+            '(Press 3-9 to change)',
+            '',
+            '📊 Current masses:',
+        ]
+        for i in range(min(state.n_bodies, 6)):
+            lines.append(f'  Body {i+1}: {state.masses[i]:.2f}')
+        if state.n_bodies > 6:
+            lines.append(f'  ... +{state.n_bodies-6} more')
         
+        lines.extend([
+            '',
+            '🎯 Tips:',
+            '• More bodies = chaos',
+            '• Watch the forces!',
+            '• Try predicting!',
+        ])
+        
+        editor_text.set_text('\n'.join(lines))
+    
+    def update_zoom() -> None:
+        r = config.display_range * state.zoom
+        ax_3d.set_xlim(-r, r)
+        ax_3d.set_ylim(-r, r)
+        ax_3d.set_zlim(-r, r)
+    
+    def on_key(event) -> None:
         if event.key == ' ':
-            paused[0] = not paused[0]
-            print(f"⏯️  {'PAUSED' if paused[0] else 'RUNNING'}")
+            state.paused = not state.paused
+            print(f"⏯️  {'PAUSED' if state.paused else 'RUNNING'}")
         
         elif event.key == 'r':
-            generation[0] += 1
-            stats['max_generation'] = max(stats['max_generation'], generation[0])
-            state['positions'], state['velocities'], state['masses'] = generate_initial_conditions(
-                state['n_bodies'], mass_min, mass_max
-            )
-            sim_time[0] = 0.0
-            trail_history = [[] for _ in range(state['n_bodies'])]
-            prediction_mode[0] = False
+            simulator.restart()
+            create_plot_objects(state.n_bodies)
             prediction_text.set_visible(False)
-            print(f"🔄 Restart - Generation {generation[0]}")
+            print(f"🔄 Restart - Generation {state.generation}")
         
         elif event.key == 'a':
-            auto_rotate[0] = not auto_rotate[0]
-            print(f"🔄 Auto-rotate: {'ON' if auto_rotate[0] else 'OFF'}")
+            state.auto_rotate = not state.auto_rotate
+            print(f"🔄 Auto-rotate: {'ON' if state.auto_rotate else 'OFF'}")
         
         elif event.key == 'f':
-            show_forces[0] = not show_forces[0]
-            force_label.set_visible(show_forces[0])
-            if show_forces[0]:
+            state.show_forces = not state.show_forces
+            force_label.set_visible(state.show_forces)
+            if state.show_forces:
                 force_label.set_text('🔴 Red arrows = Gravitational force')
-            print(f"⚡ Force vectors: {'ON' if show_forces[0] else 'OFF'}")
+            print(f"⚡ Force vectors: {'ON' if state.show_forces else 'OFF'}")
         
         elif event.key == 'e':
-            show_editor[0] = not show_editor[0]
-            editor_text.set_visible(show_editor[0])
-            if show_editor[0]:
+            state.show_editor = not state.show_editor
+            editor_text.set_visible(state.show_editor)
+            if state.show_editor:
                 update_editor_panel()
-            print(f"📝 Editor: {'OPEN' if show_editor[0] else 'CLOSED'}")
+            print(f"📝 Editor: {'OPEN' if state.show_editor else 'CLOSED'}")
         
         elif event.key == 'p':
-            prediction_mode[0] = not prediction_mode[0]
-            if prediction_mode[0]:
-                paused[0] = True
-                prediction_made[0] = False
+            state.prediction_mode = not state.prediction_mode
+            if state.prediction_mode:
+                state.paused = True
+                state.prediction_made = False
                 prediction_text.set_text(
                     '🔮 PREDICTION MODE\n'
                     '─────────────────\n'
@@ -381,9 +609,9 @@ def run_advanced_simulation():
                 prediction_text.set_visible(False)
                 print("🔮 Prediction mode OFF")
         
-        elif event.key == 'enter' and prediction_mode[0]:
-            paused[0] = False
-            prediction_made[0] = True
+        elif event.key == 'enter' and state.prediction_mode:
+            state.paused = False
+            state.prediction_made = True
             prediction_text.set_text('▶️ Running...\nWatch what happens!')
         
         elif event.key == 'q':
@@ -391,222 +619,131 @@ def run_advanced_simulation():
             plt.close()
         
         elif event.key in ['+', '=']:
-            zoom[0] = max(0.3, zoom[0] * 0.8)
+            state.zoom = max(0.3, state.zoom * 0.8)
             update_zoom()
         
         elif event.key == '-':
-            zoom[0] = min(3.0, zoom[0] * 1.25)
+            state.zoom = min(3.0, state.zoom * 1.25)
             update_zoom()
         
-        # 数字キーで物体数変更
         elif event.key in ['3', '4', '5', '6', '7', '8', '9']:
             new_n = int(event.key)
-            if new_n != state['n_bodies']:
-                change_n_bodies(new_n)
+            if new_n != state.n_bodies:
+                simulator.change_n_bodies(new_n)
+                create_plot_objects(state.n_bodies)
+                if state.show_editor:
+                    update_editor_panel()
     
-    def on_scroll(event):
+    def on_scroll(event) -> None:
         if event.button == 'up':
-            zoom[0] = max(0.3, zoom[0] * 0.9)
+            state.zoom = max(0.3, state.zoom * 0.9)
         else:
-            zoom[0] = min(3.0, zoom[0] * 1.1)
+            state.zoom = min(3.0, state.zoom * 1.1)
         update_zoom()
-    
-    def update_zoom():
-        r = DISPLAY_RANGE * zoom[0]
-        display_range[0] = r
-        ax_3d.set_xlim(-r, r)
-        ax_3d.set_ylim(-r, r)
-        ax_3d.set_zlim(-r, r)
-    
-    def change_n_bodies(new_n):
-        nonlocal bodies, trails, velocity_arrows, force_arrows, trail_history, colors
-        
-        # 既存の描画オブジェクトをクリア（非表示に）
-        for body in bodies:
-            body.set_data([], [])
-            body.set_3d_properties([])
-        for trail in trails:
-            trail.set_data([], [])
-            trail.set_3d_properties([])
-        for arrow in velocity_arrows:
-            arrow.set_data([], [])
-            arrow.set_3d_properties([])
-        for force in force_arrows:
-            force.set_data([], [])
-            force.set_3d_properties([])
-        
-        # 新しい物体数で初期化
-        state['n_bodies'] = new_n
-        state['positions'], state['velocities'], state['masses'] = generate_initial_conditions(
-            new_n, mass_min, mass_max
-        )
-        
-        colors = plt.cm.tab10(np.linspace(0, 1, max(new_n, 10)))[:new_n]
-        
-        # 描画オブジェクトを再作成
-        bodies.clear()
-        trails.clear()
-        velocity_arrows.clear()
-        force_arrows.clear()
-        trail_history = [[] for _ in range(new_n)]
-        
-        for i in range(new_n):
-            body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=10,
-                              markeredgecolor='white', markeredgewidth=1)
-            bodies.append(body)
-            trail, = ax_3d.plot([], [], [], '-', color=colors[i], alpha=0.4, linewidth=1)
-            trails.append(trail)
-            arrow, = ax_3d.plot([], [], [], '-', color=colors[i], linewidth=1.5, alpha=0.7)
-            velocity_arrows.append(arrow)
-            force, = ax_3d.plot([], [], [], '-', color='#ff4444', linewidth=2, alpha=0.8)
-            force_arrows.append(force)
-        
-        sim_time[0] = 0.0
-        generation[0] += 1
-        print(f"🔢 Changed to {new_n} bodies - Generation {generation[0]}")
-        
-        if show_editor[0]:
-            update_editor_panel()
-    
-    def update_editor_panel():
-        lines = [
-            '📝 EDITOR',
-            '─────────────',
-            f'N Bodies: {state["n_bodies"]}',
-            '(Press 3-9 to change)',
-            '',
-            '📊 Current masses:',
-        ]
-        for i in range(min(state['n_bodies'], 6)):
-            lines.append(f'  Body {i+1}: {state["masses"][i]:.2f}')
-        if state['n_bodies'] > 6:
-            lines.append(f'  ... +{state["n_bodies"]-6} more')
-        
-        lines.extend([
-            '',
-            '🎯 Tips:',
-            '• More bodies = chaos',
-            '• Watch the forces!',
-            '• Try predicting!',
-        ])
-        
-        editor_text.set_text('\n'.join(lines))
     
     fig.canvas.mpl_connect('key_press_event', on_key)
     fig.canvas.mpl_connect('scroll_event', on_scroll)
     
-    # ============================================================
-    # アニメーション更新
-    # ============================================================
-    
-    def update(frame):
-        nonlocal trail_history
-        
-        if paused[0]:
-            # 一時停止中も力ベクトルは更新
-            if show_forces[0]:
-                forces = compute_forces(state['positions'], state['masses'], softening)
-                for i in range(state['n_bodies']):
-                    x, y, z = state['positions'][i]
-                    fx, fy, fz = forces[i] * FORCE_ARROW_SCALE
+    def update(frame: int) -> List:
+        if state.paused:
+            if state.show_forces:
+                forces = simulator.get_forces()
+                for i in range(state.n_bodies):
+                    x, y, z = state.positions[i]
+                    fx, fy, fz = forces[i] * config.force_arrow_scale
                     force_arrows[i].set_data([x, x+fx], [y, y+fy])
                     force_arrows[i].set_3d_properties([z, z+fz])
             return bodies + trails + velocity_arrows + force_arrows + [info_text]
         
         # シミュレーション進行
-        steps_per_frame = 10
-        for _ in range(steps_per_frame):
-            state['positions'], state['velocities'], dt = rk4_step_adaptive(
-                state['positions'], state['velocities'], state['masses'],
-                softening, BASE_DT, MIN_DT, MAX_DT
-            )
-            sim_time[0] += dt
+        simulator.step(config.steps_per_frame)
         
         # 境界チェック
-        if is_out_of_bounds(state['positions'], display_range[0]):
-            print(f"🔄 Generation {generation[0]} ended at t={sim_time[0]:.2f}")
-            generation[0] += 1
-            stats['max_generation'] = max(stats['max_generation'], generation[0])
+        if simulator.is_out_of_bounds():
+            print(f"🔄 Generation {state.generation} ended at t={state.sim_time:.2f}")
+            simulator.restart()
+            create_plot_objects(state.n_bodies)
             
-            state['positions'], state['velocities'], state['masses'] = generate_initial_conditions(
-                state['n_bodies'], mass_min, mass_max
-            )
-            sim_time[0] = 0.0
-            trail_history = [[] for _ in range(state['n_bodies'])]
-            
-            if prediction_mode[0]:
-                prediction_mode[0] = False
+            if state.prediction_mode:
+                state.prediction_mode = False
                 prediction_text.set_text('💥 They escaped!\nPress [P] to try again')
             
-            if show_editor[0]:
+            if state.show_editor:
                 update_editor_panel()
         
         # 軌跡更新
-        for i in range(state['n_bodies']):
-            trail_history[i].append(state['positions'][i].copy())
-            if len(trail_history[i]) > max_trail:
-                trail_history[i].pop(0)
+        simulator.update_trails()
         
         # 計算
-        energy = compute_energy(state['positions'], state['velocities'], state['masses'], softening)
-        min_dist = compute_min_distance(state['positions'])
+        energy = simulator.get_energy()
+        min_dist = simulator.get_min_distance()
         
-        # 力計算（表示用）
-        forces = compute_forces(state['positions'], state['masses'], softening) if show_forces[0] else None
+        # 力計算
+        forces = simulator.get_forces() if state.show_forces else None
         
         # 情報テキスト
         info_lines = [
-            f"Gen: {generation[0]}  Time: {sim_time[0]:.1f}  Zoom: {1/zoom[0]:.1f}x",
+            f"Gen: {state.generation}  Time: {state.sim_time:.1f}  Zoom: {1/state.zoom:.1f}x",
             f"Energy: {energy:.3f}  MinDist: {min_dist:.2f}",
-            f"Bodies: {state['n_bodies']}  MaxGen: {stats['max_generation']}",
+            f"Bodies: {state.n_bodies}  MaxGen: {state.max_generation}",
         ]
         info_text.set_text('\n'.join(info_lines))
         
         # 3D描画更新
-        for i in range(state['n_bodies']):
-            x, y, z = state['positions'][i]
-            vx, vy, vz = state['velocities'][i]
-            mass = state['masses'][i]
+        for i in range(state.n_bodies):
+            x, y, z = state.positions[i]
+            vx, vy, vz = state.velocities[i]
+            mass = state.masses[i]
             
-            size = 6 + (mass - mass_min) * 6
+            size = 6 + (mass - config.mass_min) * 6
             
             bodies[i].set_data([x], [y])
             bodies[i].set_3d_properties([z])
             bodies[i].set_markersize(size)
             
-            if trail_history[i]:
-                trail_arr = np.array(trail_history[i])
+            if state.trail_history[i]:
+                trail_arr = np.array(state.trail_history[i])
                 trails[i].set_data(trail_arr[:, 0], trail_arr[:, 1])
                 trails[i].set_3d_properties(trail_arr[:, 2])
             
             # 速度ベクトル
-            arrow_end = [x + vx * VELOCITY_ARROW_SCALE, 
-                         y + vy * VELOCITY_ARROW_SCALE, 
-                         z + vz * VELOCITY_ARROW_SCALE]
+            arrow_end = [x + vx * config.velocity_arrow_scale, 
+                         y + vy * config.velocity_arrow_scale, 
+                         z + vz * config.velocity_arrow_scale]
             velocity_arrows[i].set_data([x, arrow_end[0]], [y, arrow_end[1]])
             velocity_arrows[i].set_3d_properties([z, arrow_end[2]])
             
             # 力ベクトル
-            if show_forces[0] and forces is not None:
-                fx, fy, fz = forces[i] * FORCE_ARROW_SCALE
+            if state.show_forces and forces is not None:
+                fx, fy, fz = forces[i] * config.force_arrow_scale
                 force_arrows[i].set_data([x, x+fx], [y, y+fy])
                 force_arrows[i].set_3d_properties([z, z+fz])
             else:
                 force_arrows[i].set_data([], [])
                 force_arrows[i].set_3d_properties([])
         
-        if auto_rotate[0]:
-            azim[0] += 0.3
-            ax_3d.view_init(elev=20, azim=azim[0])
+        if state.auto_rotate:
+            state.azim += 0.3
+            ax_3d.view_init(elev=20, azim=state.azim)
         
         return bodies + trails + velocity_arrows + force_arrows + [info_text]
     
     anim = FuncAnimation(fig, update, frames=None, blit=False, 
-                         interval=ANIMATION_INTERVAL, cache_frame_data=False)
+                         interval=config.animation_interval, cache_frame_data=False)
     
     plt.show()
     
     return anim
+
+
+# ============================================================
+# 後方互換性のための関数
+# ============================================================
+
+def run_advanced_simulation() -> FuncAnimation:
+    """フル機能版N体シミュレーター + 教育モード（後方互換性）"""
+    simulator = NBodySimulator()
+    return run_simulation_gui(simulator)
 
 
 # ============================================================
@@ -640,4 +777,9 @@ if __name__ == "__main__":
     print("=" * 65)
     print()
     
-    run_advanced_simulation()
+    # 方法1: 新しいクラスベースのAPI
+    simulator = NBodySimulator()
+    simulator.run()
+    
+    # 方法2: 後方互換性のある関数
+    # run_advanced_simulation()

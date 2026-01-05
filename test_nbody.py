@@ -630,6 +630,172 @@ class TestPredictionModeLogic:
         assert prediction_made[0] == True
 
 
+# ============================================================
+# 新しいクラスのテスト
+# ============================================================
+
+class TestSimulationConfig:
+    """SimulationConfig クラスのテスト"""
+    
+    def test_default_config(self):
+        """デフォルト設定が正しいことを確認"""
+        from nbody_simulation_advanced import SimulationConfig
+        
+        config = SimulationConfig()
+        assert config.n_bodies == 3
+        assert config.g == 1.0
+        assert config.softening > 0
+        assert config.mass_min < config.mass_max
+    
+    def test_custom_config(self):
+        """カスタム設定が適用されることを確認"""
+        from nbody_simulation_advanced import SimulationConfig
+        
+        config = SimulationConfig(n_bodies=5, g=2.0, softening=0.1)
+        assert config.n_bodies == 5
+        assert config.g == 2.0
+        assert config.softening == 0.1
+    
+    def test_config_validation(self):
+        """設定のバリデーションが動作することを確認"""
+        from nbody_simulation_advanced import SimulationConfig
+        
+        # 正常な設定
+        config = SimulationConfig(n_bodies=5)
+        config.validate()  # エラーなし
+        
+        # 異常な設定
+        config_invalid = SimulationConfig(n_bodies=1)  # 2未満はエラー
+        with pytest.raises(ValueError):
+            config_invalid.validate()
+
+
+class TestSimulationState:
+    """SimulationState クラスのテスト"""
+    
+    def test_state_initialization(self):
+        """状態の初期化が正しいことを確認"""
+        from nbody_simulation_advanced import SimulationState
+        
+        positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        velocities = np.zeros((2, 3))
+        masses = np.array([1.0, 1.0])
+        
+        state = SimulationState(
+            positions=positions,
+            velocities=velocities,
+            masses=masses,
+            n_bodies=2
+        )
+        
+        assert state.generation == 1
+        assert state.sim_time == 0.0
+        assert state.paused == False
+        assert len(state.trail_history) == 2
+    
+    def test_state_default_values(self):
+        """デフォルト値が正しいことを確認"""
+        from nbody_simulation_advanced import SimulationState
+        
+        state = SimulationState(
+            positions=np.zeros((3, 3)),
+            velocities=np.zeros((3, 3)),
+            masses=np.ones(3),
+            n_bodies=3
+        )
+        
+        assert state.auto_rotate == False
+        assert state.show_forces == False
+        assert state.prediction_mode == False
+
+
+class TestNBodySimulator:
+    """NBodySimulator クラスのテスト"""
+    
+    def test_simulator_initialization(self):
+        """シミュレーターの初期化が正しいことを確認"""
+        from nbody_simulation_advanced import NBodySimulator, SimulationConfig
+        
+        simulator = NBodySimulator()
+        assert simulator.state.n_bodies == 3
+        assert simulator.config.n_bodies == 3
+    
+    def test_simulator_with_custom_config(self):
+        """カスタム設定でシミュレーターを初期化できることを確認"""
+        from nbody_simulation_advanced import NBodySimulator, SimulationConfig
+        
+        config = SimulationConfig(n_bodies=5, g=2.0)
+        simulator = NBodySimulator(config)
+        
+        assert simulator.state.n_bodies == 5
+        assert simulator.config.g == 2.0
+    
+    def test_simulator_step(self):
+        """ステップ実行で状態が更新されることを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        initial_positions = simulator.state.positions.copy()
+        initial_time = simulator.state.sim_time
+        
+        simulator.step(10)
+        
+        assert not np.allclose(simulator.state.positions, initial_positions)
+        assert simulator.state.sim_time > initial_time
+    
+    def test_simulator_restart(self):
+        """リスタートで世代がインクリメントされることを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        assert simulator.state.generation == 1
+        
+        simulator.restart()
+        assert simulator.state.generation == 2
+        assert simulator.state.sim_time == 0.0
+    
+    def test_simulator_change_n_bodies(self):
+        """物体数変更が正しく動作することを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        assert simulator.state.n_bodies == 3
+        
+        simulator.change_n_bodies(5)
+        assert simulator.state.n_bodies == 5
+        assert len(simulator.state.masses) == 5
+        assert len(simulator.state.positions) == 5
+    
+    def test_simulator_get_energy(self):
+        """エネルギー取得が動作することを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        energy = simulator.get_energy()
+        
+        assert isinstance(energy, float)
+        assert energy < 0  # 束縛系なので負
+    
+    def test_simulator_get_forces(self):
+        """力取得が動作することを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        forces = simulator.get_forces()
+        
+        assert forces.shape == simulator.state.positions.shape
+    
+    def test_simulator_update_trails(self):
+        """軌跡更新が動作することを確認"""
+        from nbody_simulation_advanced import NBodySimulator
+        
+        simulator = NBodySimulator()
+        assert len(simulator.state.trail_history[0]) == 0
+        
+        simulator.update_trails()
+        assert len(simulator.state.trail_history[0]) == 1
+
+
 # スタンドアロン実行用
 if __name__ == "__main__":
     print("=" * 60)
