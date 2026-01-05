@@ -69,7 +69,25 @@ python three_body_simulation.py
 | **F** | 力ベクトル表示 | 重力の方向と大きさを赤い矢印で可視化 |
 | **E** | エディタパネル | 物体数や質量を確認 |
 | **P** | 予測モード | 一時停止して「次に何が起きる？」を予測 |
+| **M** | 周期解モード | 有名な周期軌道を順次表示 |
 | **3〜9** | 物体数変更 | 3体から9体まで自由に変更 |
+
+### 周期解カタログ（Mキー）
+
+**M**キーを押すと、数学的に発見された有名な三体周期解を順番に体験できます。
+
+| # | 名前 | 発見者 | 特徴 |
+|---|------|--------|------|
+| 1 | Figure-8 Classic | Chenciner-Montgomery (2000) | 3体が8の字を描く有名な解 |
+| 2 | Figure-8 (I.2.A) | Šuvakov-Dmitrašinović (2013) | 8の字解のバリエーション |
+| 3 | Butterfly I | Šuvakov-Dmitrašinović (2013) | 蝶のような対称的な軌道 |
+| 4 | Lagrange Triangle | Lagrange (1772) | 正三角形を保ったまま回転 |
+| 5 | Moth I | Šuvakov-Dmitrašinović (2013) | 蛾のような複雑な軌道 |
+| 6 | Yin-Yang Ia | Šuvakov-Dmitrašinović (2013) | 陰陽のような対称軌道 |
+| 7 | Yin-Yang Ib | Šuvakov-Dmitrašinović (2013) | Yin-Yangの別バリエーション |
+| 8 | Yin-Yang II | Šuvakov-Dmitrašinović (2013) | より複雑なYin-Yang軌道 |
+
+> **Note**: 周期解は理論上は永続しますが、数値計算の誤差が蓄積するため、時間が経つと軌道がずれることがあります。これは「カオス系の数値シミュレーションの限界」を体験できる教育的な現象です。
 
 ---
 

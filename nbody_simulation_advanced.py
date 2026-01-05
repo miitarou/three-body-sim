@@ -71,6 +71,142 @@ MASS_MAX = 2.0
 
 
 # ============================================================
+# 周期解カタログ
+# ============================================================
+
+PERIODIC_SOLUTIONS = [
+    {
+        "name": "Figure-8 Classic",
+        "label": "[1/8] Figure-8 Classic",
+        "description": "Chenciner-Montgomery (2000)",
+        "positions": np.array([
+            [0.97000436, -0.24308753, 0.0],
+            [-0.97000436, 0.24308753, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.466203685, 0.43236573, 0.0],
+            [0.466203685, 0.43236573, 0.0],
+            [-0.93240737, -0.86473146, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Figure-8 (I.2.A)",
+        "label": "[2/8] Figure-8 (I.2.A)",
+        "description": "Suvakov-Dmitrasinovic (2013)",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.306893, 0.125507, 0.0],
+            [0.306893, 0.125507, 0.0],
+            [-0.613786, -0.251014, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Butterfly I",
+        "label": "[3/8] Butterfly I",
+        "description": "Suvakov-Dmitrasinovic I.8.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.412103, 0.283384, 0.0],
+            [0.412103, 0.283384, 0.0],
+            [-0.824206, -0.566768, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Lagrange Triangle",
+        "label": "[4/8] Lagrange Triangle",
+        "description": "Lagrange (1772)",
+        "positions": np.array([
+            [0.0, 1.0, 0.0],
+            [np.sqrt(3)/2, -0.5, 0.0],
+            [-np.sqrt(3)/2, -0.5, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.5, 0.0, 0.0],
+            [-0.25, -np.sqrt(3)/4, 0.0],
+            [-0.25, np.sqrt(3)/4, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Moth I",
+        "label": "[5/8] Moth I",
+        "description": "Suvakov-Dmitrasinovic I.B.1",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.46444, 0.39606, 0.0],
+            [0.46444, 0.39606, 0.0],
+            [-0.92888, -0.79212, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang Ia",
+        "label": "[6/8] Yin-Yang Ia",
+        "description": "Suvakov-Dmitrasinovic II.C.2a",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.51394, 0.30474, 0.0],
+            [0.51394, 0.30474, 0.0],
+            [-1.02788, -0.60948, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang Ib",
+        "label": "[7/8] Yin-Yang Ib",
+        "description": "Suvakov-Dmitrasinovic II.C.2b",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.28270, 0.32721, 0.0],
+            [0.28270, 0.32721, 0.0],
+            [-0.56540, -0.65442, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang II",
+        "label": "[8/8] Yin-Yang II",
+        "description": "Suvakov-Dmitrasinovic II.C.3a",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.41682, 0.33033, 0.0],
+            [0.41682, 0.33033, 0.0],
+            [-0.83364, -0.66066, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+]
+
+
+# ============================================================
 # バリデーション
 # ============================================================
 
@@ -291,6 +427,11 @@ class SimulationState:
     prediction_mode: bool = False
     prediction_made: bool = False
     
+    # 周期解モード
+    periodic_mode: bool = False
+    periodic_index: int = 0
+    periodic_name: str = ""
+    
     # 視点
     azim: float = 30.0
     zoom: float = 1.0
@@ -418,6 +559,45 @@ class NBodySimulator:
             self.config.g
         )
     
+    def toggle_periodic_mode(self) -> None:
+        """周期解モードのトグル/次の解へ切り替え"""
+        if not self.state.periodic_mode:
+            # 周期解モードに入る
+            self.state.periodic_mode = True
+            self.state.periodic_index = 0
+            self._apply_periodic_solution(0)
+        else:
+            # 次の解へ
+            self.state.periodic_index = (self.state.periodic_index + 1) % len(PERIODIC_SOLUTIONS)
+            if self.state.periodic_index == 0:
+                # 一周したら通常モードに戻る
+                self.state.periodic_mode = False
+                self.state.periodic_name = ""
+                self.restart()
+                print("🔄 周期解モード終了 → 通常モードへ")
+            else:
+                self._apply_periodic_solution(self.state.periodic_index)
+    
+    def _apply_periodic_solution(self, index: int) -> None:
+        """周期解を適用"""
+        solution = PERIODIC_SOLUTIONS[index]
+        self.state.positions = solution["positions"].copy()
+        self.state.velocities = solution["velocities"].copy()
+        self.state.masses = solution["masses"].copy()
+        self.state.n_bodies = 3
+        self.state.periodic_name = solution['label']
+        self.state.sim_time = 0.0
+        self.state.trail_history = [[] for _ in range(3)]
+        self.state.generation += 1
+        print(f"* {solution['label']} - {solution['description']}")
+    
+    def reload_periodic_solution(self) -> None:
+        """現在の周期解をリロード（Rキー用）"""
+        if self.state.periodic_mode:
+            self._apply_periodic_solution(self.state.periodic_index)
+        else:
+            self.restart()
+    
     def run(self) -> None:
         """GUIを起動して実行"""
         run_simulation_gui(self)
@@ -473,6 +653,7 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         '[F] Force vectors\n'
         '[E] Editor panel\n'
         '[P] Predict mode\n'
+        '[M] Periodic sols\n'
         '[+/-] Zoom\n'
         '[Q] Quit\n'
         '─────────────\n'
@@ -498,6 +679,23 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
                               bbox=dict(boxstyle='round', facecolor='#2a1a1a', 
                                         edgecolor='#ff6b6b', alpha=0.9),
                               visible=False)
+    
+    # 周期解名表示
+    periodic_text = fig.text(0.35, 0.92, '', color='#00ccff', fontsize=12,
+                            fontfamily='monospace', fontweight='bold',
+                            horizontalalignment='center',
+                            verticalalignment='top',
+                            bbox=dict(boxstyle='round', facecolor='#0a1a2a', 
+                                      edgecolor='#00ccff', alpha=0.9),
+                            visible=False)
+    
+    def update_periodic_display() -> None:
+        """周期解名の表示を更新"""
+        if state.periodic_mode and state.periodic_name:
+            periodic_text.set_text(f"{state.periodic_name}\n[M] next solution")
+            periodic_text.set_visible(True)
+        else:
+            periodic_text.set_visible(False)
     
     # 描画オブジェクト
     bodies: List = []
@@ -573,13 +771,17 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
     def on_key(event) -> None:
         if event.key == ' ':
             state.paused = not state.paused
-            print(f"⏯️  {'PAUSED' if state.paused else 'RUNNING'}")
+            print(f"  {'PAUSED' if state.paused else 'RUNNING'}")
         
         elif event.key == 'r':
-            simulator.restart()
+            # 周期解モードなら現在の解をリロード、通常ならランダム再生成
+            simulator.reload_periodic_solution()
             create_plot_objects(state.n_bodies)
             prediction_text.set_visible(False)
-            print(f"🔄 Restart - Generation {state.generation}")
+            if state.periodic_mode:
+                print(f"Reload: {state.periodic_name}")
+            else:
+                print(f"Restart - Generation {state.generation}")
         
         elif event.key == 'a':
             state.auto_rotate = not state.auto_rotate
@@ -629,6 +831,14 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             print("👋 Exiting...")
             plt.close()
         
+        elif event.key == 'm':
+            # 周期解モードのトグル/次の解へ
+            simulator.toggle_periodic_mode()
+            create_plot_objects(state.n_bodies)
+            update_periodic_display()
+            if state.show_editor:
+                update_editor_panel()
+        
         elif event.key in ['+', '=']:
             state.zoom = max(0.3, state.zoom * 0.8)
             update_zoom()
@@ -640,6 +850,10 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         elif event.key in ['3', '4', '5', '6', '7', '8', '9']:
             new_n = int(event.key)
             if new_n != state.n_bodies:
+                # 周期解モードを終了
+                state.periodic_mode = False
+                state.periodic_name = ""
+                update_periodic_display()
                 simulator.change_n_bodies(new_n)
                 create_plot_objects(state.n_bodies)
                 if state.show_editor:
@@ -669,15 +883,15 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         # シミュレーション進行
         simulator.step(config.steps_per_frame)
         
-        # 境界チェック
-        if simulator.is_out_of_bounds():
-            print(f"🔄 Generation {state.generation} ended at t={state.sim_time:.2f}")
+        # 境界チェック（周期解モードでは無効化 - 数値ドリフトの観察のため）
+        if not state.periodic_mode and simulator.is_out_of_bounds():
+            print(f"Generation {state.generation} ended at t={state.sim_time:.2f}")
             simulator.restart()
             create_plot_objects(state.n_bodies)
             
             if state.prediction_mode:
                 state.prediction_mode = False
-                prediction_text.set_text('💥 They escaped!\nPress [P] to try again')
+                prediction_text.set_text('They escaped!\nPress [P] to try again')
             
             if state.show_editor:
                 update_editor_panel()
