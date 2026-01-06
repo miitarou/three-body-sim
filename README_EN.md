@@ -65,8 +65,9 @@ python nbody_simulation_advanced.py
 | Key | Function | Learning Effect |
 |-----|----------|-----------------|
 | **F** | Force vectors | Visualize gravity direction and magnitude with red arrows |
+| **G** | Ghost mode | Visualize sensitivity to initial conditions (essence of chaos) |
 | **E** | Editor panel | View body count and masses |
-| **P** | Prediction mode | Pause and predict "what happens next?" |
+| **P** | Prediction Quiz | Predict state 2.5 seconds ahead and compete for score |
 | **M** | Periodic solutions | Cycle through famous periodic orbits |
 | **3-9** | Change body count | Freely switch between 3 to 9 bodies |
 
@@ -110,6 +111,14 @@ Press **P** to enter prediction mode.
 3. Press **Enter** to resume and verify
 
 Experience the essence of chaos theory.
+
+### 5. Ghost Mode - Experience Chaos
+
+Press **G** to display "ghost" bodies.
+
+1. Ghosts are offset by **only 0.001** from the real bodies
+2. Initially overlapping, but **completely separate** over time
+3. Experience "tiny initial differences lead to vastly different outcomes"
 
 ### 4. Add More Bodies
 

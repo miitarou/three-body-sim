@@ -467,6 +467,19 @@ class SimulationState:
     prediction_mode: bool = False
     prediction_made: bool = False
     
+    # 予測クイズ
+    quiz_active: bool = False
+    quiz_answer: int = 0  # 0=未設定, 1=衝突, 2=逃亡, 3=安定
+    quiz_user_choice: int = 0
+    quiz_correct: int = 0  # 正解数
+    quiz_total: int = 0  # 総回答数
+    
+    # ゴーストモード（カオス可視化）
+    ghost_mode: bool = False
+    ghost_positions: Optional[np.ndarray] = None
+    ghost_velocities: Optional[np.ndarray] = None
+    ghost_trail_history: List[List[np.ndarray]] = field(default_factory=list)
+    
     # 周期解モード
     periodic_mode: bool = False
     periodic_index: int = 0
@@ -482,6 +495,8 @@ class SimulationState:
     def __post_init__(self) -> None:
         if not self.trail_history:
             self.trail_history = [[] for _ in range(self.n_bodies)]
+        if not self.ghost_trail_history:
+            self.ghost_trail_history = [[] for _ in range(self.n_bodies)]
 
 
 # ============================================================
@@ -645,6 +660,129 @@ class NBodySimulator:
         else:
             self.restart()
     
+    def predict_future(self, real_seconds: float = 2.5) -> int:
+        """
+        指定実時間後の状態をシャドウ計算で予測
+        
+        Args:
+            real_seconds: 予測する実時間（秒）
+        
+        Returns:
+            1: 衝突（急接近）
+            2: 逃亡（境界外に出る）
+            3: 安定軌道（どちらでもない）
+        """
+        # 実時間をシミュレーション時間に変換
+        # 1フレーム = 30ms, 10ステップ/フレーム, dt=0.001
+        # → 1秒 ≈ 0.33 シミュレーション時間
+        sim_time_target = real_seconds * 0.33
+        
+        # 現在の状態をコピー
+        pos = self.state.positions.copy()
+        vel = self.state.velocities.copy()
+        masses = self.state.masses.copy()
+        initial_pos = pos.copy()
+        
+        elapsed = 0.0
+        # 衝突判定: ソフトニングの1.5倍以下なら「衝突」（非常に近い接近）
+        collision_threshold = self.get_effective_softening() * 1.5
+        # 逃亡判定: 表示範囲の1.5倍を超えたら逃亡
+        escape_bound = self.config.display_range * 1.5
+        
+        min_distance_found = float('inf')
+        max_displacement = 0.0
+        
+        while elapsed < sim_time_target:
+            dt = self.config.base_dt
+            pos, vel, _ = rk4_step_adaptive(
+                pos, vel, masses,
+                self.get_effective_softening(),
+                dt, dt, dt,
+                self.config.g
+            )
+            elapsed += dt
+            
+            # 最小距離を追跡
+            min_dist = compute_min_distance(pos)
+            min_distance_found = min(min_distance_found, min_dist)
+            
+            # 最大変位を追跡
+            displacement = np.max(np.linalg.norm(pos - initial_pos, axis=1))
+            max_displacement = max(max_displacement, displacement)
+        
+        # 判定（優先順位: 逃亡 > 衝突 > 安定）
+        if max_displacement > escape_bound:
+            print(f"  [Debug] Prediction: ESCAPE (displacement={max_displacement:.2f})")
+            return 2  # 逃亡
+        elif min_distance_found < collision_threshold:
+            print(f"  [Debug] Prediction: COLLISION (min_dist={min_distance_found:.3f})")
+            return 1  # 衝突
+        else:
+            print(f"  [Debug] Prediction: STABLE (min_dist={min_distance_found:.3f}, disp={max_displacement:.2f})")
+            return 3  # 安定軌道
+
+    
+    def start_quiz(self) -> None:
+        """予測クイズを開始"""
+        self.state.quiz_active = True
+        self.state.quiz_user_choice = 0
+        self.state.quiz_answer = self.predict_future(2.5)
+        self.state.paused = True
+    
+    def answer_quiz(self, choice: int) -> bool:
+        """
+        クイズに回答
+        
+        Args:
+            choice: 1=衝突, 2=逃亡, 3=安定
+        
+        Returns:
+            正解ならTrue
+        """
+        self.state.quiz_user_choice = choice
+        self.state.quiz_total += 1
+        correct = (choice == self.state.quiz_answer)
+        if correct:
+            self.state.quiz_correct += 1
+        return correct
+    
+    def toggle_ghost_mode(self) -> None:
+        """ゴーストモードをトグル"""
+        self.state.ghost_mode = not self.state.ghost_mode
+        if self.state.ghost_mode:
+            # 現在の状態を少しだけずらしてゴーストを初期化
+            perturbation = 0.001  # 非常に小さな摂動
+            self.state.ghost_positions = self.state.positions.copy() + \
+                np.random.randn(*self.state.positions.shape) * perturbation
+            self.state.ghost_velocities = self.state.velocities.copy()
+            self.state.ghost_trail_history = [[] for _ in range(self.state.n_bodies)]
+            print("[G] Ghost mode ON - Watch the chaos unfold!")
+        else:
+            self.state.ghost_positions = None
+            self.state.ghost_velocities = None
+            self.state.ghost_trail_history = [[] for _ in range(self.state.n_bodies)]
+            print("[G] Ghost mode OFF")
+    
+    def step_ghost(self, dt: float) -> None:
+        """ゴーストのシミュレーションを1ステップ進める"""
+        if not self.state.ghost_mode or self.state.ghost_positions is None:
+            return
+        
+        self.state.ghost_positions, self.state.ghost_velocities, _ = rk4_step_adaptive(
+            self.state.ghost_positions,
+            self.state.ghost_velocities,
+            self.state.masses,
+            self.get_effective_softening(),
+            dt, self.config.min_dt, self.config.max_dt,
+            self.config.g
+        )
+        
+        # ゴーストの軌跡を更新
+        for i in range(self.state.n_bodies):
+            self.state.ghost_trail_history[i].append(self.state.ghost_positions[i].copy())
+            if len(self.state.ghost_trail_history[i]) > self.config.max_trail:
+                self.state.ghost_trail_history[i].pop(0)
+    
     def run(self) -> None:
         """GUIを起動して実行"""
         run_simulation_gui(self)
@@ -692,18 +830,19 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
     
     # 操作説明パネル
     controls_text = fig.text(0.72, 0.95, 
-        '🎮 CONTROLS\n'
-        '─────────────\n'
+        '== CONTROLS ==\n'
+        '-------------\n'
         '[SPACE] Pause\n'
         '[R] Restart\n'
         '[A] Auto-rotate\n'
         '[F] Force vectors\n'
+        '[G] Ghost mode\n'
         '[E] Editor panel\n'
         '[P] Predict mode\n'
         '[M] Periodic sols\n'
         '[+/-] Zoom\n'
         '[Q] Quit\n'
-        '─────────────\n'
+        '-------------\n'
         'Drag to rotate\n'
         'Scroll to zoom',
         color='#888888', fontsize=9, fontfamily='monospace',
@@ -749,9 +888,11 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
     trails: List = []
     velocity_arrows: List = []
     force_arrows: List = []
+    ghost_bodies: List = []
+    ghost_trails: List = []
     
     def create_plot_objects(n: int) -> None:
-        nonlocal bodies, trails, velocity_arrows, force_arrows, colors
+        nonlocal bodies, trails, velocity_arrows, force_arrows, ghost_bodies, ghost_trails, colors
         
         # 既存のプロットオブジェクトをAxesから削除
         for body in bodies:
@@ -762,11 +903,17 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             arrow.remove()
         for force in force_arrows:
             force.remove()
+        for ghost in ghost_bodies:
+            ghost.remove()
+        for ghost_t in ghost_trails:
+            ghost_t.remove()
         
         bodies.clear()
         trails.clear()
         velocity_arrows.clear()
         force_arrows.clear()
+        ghost_bodies.clear()
+        ghost_trails.clear()
         colors = plt.cm.tab10(np.linspace(0, 1, max(n, 10)))[:n]
         
         for i in range(n):
@@ -779,20 +926,34 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             velocity_arrows.append(arrow)
             force, = ax_3d.plot([], [], [], '-', color='#ff4444', linewidth=2, alpha=0.8)
             force_arrows.append(force)
+            # ゴースト（半透明・点線）
+            ghost_body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=8,
+                                    alpha=0.6, markeredgecolor='white', markeredgewidth=0.5)
+            ghost_bodies.append(ghost_body)
+            ghost_trail, = ax_3d.plot([], [], [], '--', color=colors[i], alpha=0.4, linewidth=1.5)
+            ghost_trails.append(ghost_trail)
     
     create_plot_objects(state.n_bodies)
     
     force_label = fig.text(0.72, 0.08, '', color='#ff4444', fontsize=8,
                           fontfamily='monospace', visible=False)
     
+    # ゴーストモード表示
+    ghost_label = fig.text(0.02, 0.95, '[G] GHOST MODE ON\nChaos visualization', 
+                          color='#00ffaa', fontsize=10, fontweight='bold',
+                          fontfamily='monospace', verticalalignment='top',
+                          bbox=dict(boxstyle='round', facecolor='#0a2a1a', 
+                                    edgecolor='#00ffaa', alpha=0.9),
+                          visible=False)
+    
     def update_editor_panel() -> None:
         lines = [
-            '📝 EDITOR',
-            '─────────────',
+            '== EDITOR ==',
+            '-------------',
             f'N Bodies: {state.n_bodies}',
             '(Press 3-9 to change)',
             '',
-            '📊 Current masses:',
+            '-- Masses --',
         ]
         for i in range(min(state.n_bodies, 6)):
             lines.append(f'  Body {i+1}: {state.masses[i]:.2f}')
@@ -801,10 +962,10 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         
         lines.extend([
             '',
-            '🎯 Tips:',
-            '• More bodies = chaos',
-            '• Watch the forces!',
-            '• Try predicting!',
+            '-- Tips --',
+            '* More bodies = chaos',
+            '* Watch the forces!',
+            '* Try predicting!',
         ])
         
         editor_text.set_text('\n'.join(lines))
@@ -825,6 +986,12 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             simulator.reload_periodic_solution()
             create_plot_objects(state.n_bodies)
             prediction_text.set_visible(False)
+            
+            # ゴーストもリセット（ONのままなら新しい位置で再初期化）
+            if state.ghost_mode:
+                simulator.toggle_ghost_mode()  # OFF
+                simulator.toggle_ghost_mode()  # ON（新しい位置で）
+            
             if state.periodic_mode:
                 print(f"Reload: {state.periodic_name}")
             else:
@@ -849,33 +1016,71 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             print(f"📝 Editor: {'OPEN' if state.show_editor else 'CLOSED'}")
         
         elif event.key == 'p':
-            state.prediction_mode = not state.prediction_mode
-            if state.prediction_mode:
-                state.paused = True
-                state.prediction_made = False
+            if not state.quiz_active:
+                # クイズ開始
+                simulator.start_quiz()
                 prediction_text.set_text(
-                    '🔮 PREDICTION MODE\n'
-                    '─────────────────\n'
-                    'What will happen next?\n\n'
-                    '  Will they...\n'
-                    '  • Collide?\n'
-                    '  • Escape?\n'
-                    '  • Orbit?\n\n'
-                    'Press [ENTER] to see!'
+                    '[?] PREDICTION QUIZ\n'
+                    '-----------------\n'
+                    'In 2.5 seconds...\n'
+                    'What will happen?\n\n'
+                    'Press a key:\n'
+                    '  [1] Collision\n'
+                    '  [2] Escape\n'
+                    '  [3] Stable orbit\n\n'
+                    f'Score: {state.quiz_correct}/{state.quiz_total}'
                 )
                 prediction_text.set_visible(True)
-                print("🔮 Prediction mode ON - Make your prediction!")
+                print("[?] Quiz started - What will happen in 2.5 seconds?")
             else:
+                # クイズキャンセル
+                state.quiz_active = False
+                state.paused = False
                 prediction_text.set_visible(False)
-                print("🔮 Prediction mode OFF")
+                print("[?] Quiz cancelled")
         
-        elif event.key == 'enter' and state.prediction_mode:
+        elif event.key in ['1', '2', '3'] and state.quiz_active:
+            choice = int(event.key)
+            correct = simulator.answer_quiz(choice)
+            
+            answer_names = {1: 'Collision', 2: 'Escape', 3: 'Stable'}
+            your_answer = answer_names[choice]
+            correct_answer = answer_names[state.quiz_answer]
+            
+            if correct:
+                result_text = (
+                    '[O] CORRECT!\n'
+                    '-----------------\n'
+                    f'You said: {your_answer}\n'
+                    f'Answer:   {correct_answer}\n\n'
+                    f'Score: {state.quiz_correct}/{state.quiz_total}\n\n'
+                    'Press [ENTER] to watch!'
+                )
+                print(f"[O] Correct! {your_answer}")
+            else:
+                result_text = (
+                    '[X] WRONG!\n'
+                    '-----------------\n'
+                    f'You said: {your_answer}\n'
+                    f'Answer:   {correct_answer}\n\n'
+                    f'Score: {state.quiz_correct}/{state.quiz_total}\n\n'
+                    'Press [ENTER] to watch!'
+                )
+                print(f"[X] Wrong! Correct was {correct_answer}")
+            
+            prediction_text.set_text(result_text)
+        
+        elif event.key == 'enter' and state.quiz_active:
             state.paused = False
-            state.prediction_made = True
-            prediction_text.set_text('▶️ Running...\nWatch what happens!')
+            state.quiz_active = False
+            prediction_text.set_text('[>] Running...\nWatch what happens!')
+        
+        elif event.key == 'g':
+            simulator.toggle_ghost_mode()
+            ghost_label.set_visible(state.ghost_mode)
         
         elif event.key == 'q':
-            print("👋 Exiting...")
+            print("[Q] Exiting...")
             plt.close()
         
         elif event.key == 'm':
@@ -883,6 +1088,12 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             simulator.toggle_periodic_mode()
             create_plot_objects(state.n_bodies)
             update_periodic_display()
+            
+            # ゴーストもリセット
+            if state.ghost_mode:
+                simulator.toggle_ghost_mode()  # OFF
+                simulator.toggle_ghost_mode()  # ON（新しい位置で）
+            
             if state.show_editor:
                 update_editor_panel()
         
@@ -930,11 +1141,20 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         # シミュレーション進行
         simulator.step(config.steps_per_frame)
         
+        # ゴーストのシミュレーション進行
+        if state.ghost_mode:
+            for _ in range(config.steps_per_frame):
+                simulator.step_ghost(config.base_dt)
+        
         # 境界チェック（周期解モードでは無効化 - 数値ドリフトの観察のため）
         if not state.periodic_mode and simulator.is_out_of_bounds():
             print(f"Generation {state.generation} ended at t={state.sim_time:.2f}")
             simulator.restart()
             create_plot_objects(state.n_bodies)
+            
+            # ゴーストモードをオフにする（新しい初期条件で再スタート）
+            if state.ghost_mode:
+                simulator.toggle_ghost_mode()
             
             if state.prediction_mode:
                 state.prediction_mode = False
@@ -993,12 +1213,28 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             else:
                 force_arrows[i].set_data([], [])
                 force_arrows[i].set_3d_properties([])
+            
+            # ゴースト描画
+            if state.ghost_mode and state.ghost_positions is not None:
+                gx, gy, gz = state.ghost_positions[i]
+                ghost_bodies[i].set_data([gx], [gy])
+                ghost_bodies[i].set_3d_properties([gz])
+                ghost_bodies[i].set_visible(True)
+                
+                if state.ghost_trail_history[i]:
+                    ghost_arr = np.array(state.ghost_trail_history[i])
+                    ghost_trails[i].set_data(ghost_arr[:, 0], ghost_arr[:, 1])
+                    ghost_trails[i].set_3d_properties(ghost_arr[:, 2])
+                    ghost_trails[i].set_visible(True)
+            else:
+                ghost_bodies[i].set_visible(False)
+                ghost_trails[i].set_visible(False)
         
         if state.auto_rotate:
             state.azim += 0.3
             ax_3d.view_init(elev=20, azim=state.azim)
         
-        return bodies + trails + velocity_arrows + force_arrows + [info_text]
+        return bodies + trails + velocity_arrows + force_arrows + ghost_bodies + ghost_trails + [info_text]
     
     anim = FuncAnimation(fig, update, frames=None, blit=False, 
                          interval=config.animation_interval, cache_frame_data=False)
