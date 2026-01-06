@@ -1,5 +1,7 @@
 # 三体問題シミュレーター / N-Body Problem Simulator
 
+**🌐 言語: 日本語 | [English](README_EN.md) | [中文](README_CN.md)**
+
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Tests](https://github.com/miitarou/three-body-sim/actions/workflows/test.yml/badge.svg)](https://github.com/miitarou/three-body-sim/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
