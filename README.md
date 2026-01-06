@@ -39,11 +39,7 @@ pip install numpy matplotlib
 ## ▶️ 実行
 
 ```bash
-# Learning Edition（推奨）
 python nbody_simulation_advanced.py
-
-# 2D版（8の字解など）
-python three_body_simulation.py
 ```
 
 ---
@@ -69,7 +65,27 @@ python three_body_simulation.py
 | **F** | 力ベクトル表示 | 重力の方向と大きさを赤い矢印で可視化 |
 | **E** | エディタパネル | 物体数や質量を確認 |
 | **P** | 予測モード | 一時停止して「次に何が起きる？」を予測 |
+| **M** | 周期解モード | 有名な周期軌道を順次表示 |
 | **3〜9** | 物体数変更 | 3体から9体まで自由に変更 |
+
+### 周期解カタログ（Mキー）
+
+**M**キーを押すと、数学的に発見された有名な三体周期解を順番に体験できます。
+
+| # | 名前 | 発見者 | 特徴 |
+|---|------|--------|------|
+| 1 ⭐ | **Figure-8 Classic** | Chenciner-Montgomery (2000) | 数学史上最も有名な三体周期解 |
+| 2 ⭐ | **Lagrange Triangle** | Lagrange (1772) | 正三角形を保ったまま回転（歴史的価値最高） |
+| 3 ⭐ | **Butterfly I** | Šuvakov-Dmitrašinović (2013) | 蝶のような美しい軌道 |
+| 4 | Figure-8 (I.2.A) | Šuvakov-Dmitrašinović (2013) | 8の字解のバリエーション |
+| 5 | Moth I | Šuvakov-Dmitrašinović (2013) | 蛾のような複雑な軌道 |
+| 6 | Yin-Yang Ia | Šuvakov-Dmitrašinović (2013) | 陰陽のような対称軌道 |
+| 7 | Yin-Yang Ib | Šuvakov-Dmitrašinović (2013) | Yin-Yangの別バリエーション |
+| 8 | Yin-Yang II | Šuvakov-Dmitrašinović (2013) | より複雑なYin-Yang軌道 |
+| 9 | Yin-Yang III | Šuvakov-Dmitrašinović (2013) | 長周期のYin-Yang軌道 |
+| 10 | Yarn | Šuvakov-Dmitrašinović (2013) | 糸玉のような複雑な軌道 |
+
+> **Note**: 周期解は理論上は永続しますが、数値計算の誤差が蓄積するため、時間が経つと軌道がずれることがあります。これは「カオス系の数値シミュレーションの限界」を体験できる教育的な現象です。
 
 ---
 
@@ -156,8 +172,8 @@ F = G × m₁ × m₂ / r²
 
 ```
 three-body-sim/
-├── nbody_simulation_advanced.py  # Learning Edition（推奨）
-├── three_body_simulation.py      # 2D版（8の字解デモ）
+├── nbody_simulation_advanced.py  # メインシミュレーター
+├── test_nbody.py                 # テストスイート
 ├── demo.gif                      # デモ動画
 └── README.md                     # このファイル
 ```
@@ -180,7 +196,9 @@ three-body-sim/
 ## 📖 参考文献
 
 - Chenciner & Montgomery (2000): "A remarkable periodic solution of the three-body problem"
-- arXiv:math/0011268
+- Šuvakov & Dmitrašinović (2013): "Three Classes of Newtonian Three-Body Planar Periodic Orbits"
+- arXiv:math/0011268 (Chenciner & Montgomery)
+- arXiv:1303.0181 (Šuvakov & Dmitrašinović)
 
 ---
 
@@ -192,5 +210,7 @@ MIT License
 
 ## 🙏 謝辞
 
+- **Joseph-Louis Lagrange**: 1772年に三体問題の正三角形解を発見し、周期解研究の礎を築いた偉大な数学者
+- **Milovan Šuvakov & Veljko Dmitrašinović**: 2013年に13種類もの新しい周期解を発見し、この分野に革命をもたらした研究者たち
 - 8の字解の発見者 Chenciner & Montgomery
 - Matplotlib / NumPy 開発チーム
