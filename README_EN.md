@@ -102,15 +102,19 @@ Press **F** to display gravitational forces as red arrows.
 - Arrow **length** = strength of gravity
 - Watch arrows grow longer as bodies approach
 
-### 3. Make Predictions
+### 3. Take the Prediction Quiz
 
-Press **P** to enter prediction mode.
+Press **P** to enter the prediction quiz.
 
 1. Simulation pauses
-2. Think about "what happens next?"
-3. Press **Enter** to resume and verify
+2. Predict what happens in **2.5 seconds**:
+   - **1** = Collision (bodies approach each other)
+   - **2** = Escape (bodies fly out)
+   - **3** = Stable orbit (neither)
+3. Correct/incorrect is displayed, score is recorded
+4. Press **Enter** to resume and verify
 
-Experience the essence of chaos theory.
+Experience how difficult it is to predict chaotic systems.
 
 ### 5. Ghost Mode - Experience Chaos
 
