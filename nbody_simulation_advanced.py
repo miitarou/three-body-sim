@@ -891,9 +891,10 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
     force_arrows: List = []
     ghost_bodies: List = []
     ghost_trails: List = []
+    glow_objects: List = []  # 星の輝きエフェクト
     
     def create_plot_objects(n: int) -> None:
-        nonlocal bodies, trails, velocity_arrows, force_arrows, ghost_bodies, ghost_trails, colors
+        nonlocal bodies, trails, velocity_arrows, force_arrows, ghost_bodies, ghost_trails, glow_objects, colors
         
         # 既存のプロットオブジェクトをAxesから削除
         for body in bodies:
@@ -909,6 +910,8 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             ghost.remove()
         for ghost_t in ghost_trails:
             ghost_t.remove()
+        for glow in glow_objects:
+            glow.remove()
         
         bodies.clear()
         trails.clear()
@@ -916,6 +919,7 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         force_arrows.clear()
         ghost_bodies.clear()
         ghost_trails.clear()
+        glow_objects.clear()
         colors = plt.cm.tab10(np.linspace(0, 1, max(n, 10)))[:n]
         
         # 軌跡のセグメント数（グラデーション効果用）
@@ -925,6 +929,11 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=10,
                               markeredgecolor='white', markeredgewidth=1)
             bodies.append(body)
+            
+            # グロー（輝き）エフェクト - 大きめの半透明の円を背後に
+            glow, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=20,
+                               alpha=0.2, markeredgewidth=0)
+            glow_objects.append(glow)
             
             # 軌跡をセグメントに分割（直近=太く濃く、過去=細く淡く）
             trail_segments = []
@@ -1151,7 +1160,7 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
                     force_arrows[i].set_3d_properties([z, z+fz])
             # trailsはネストリストなのでflatten
             flat_trails = [seg for segs in trails for seg in segs]
-            return bodies + flat_trails + velocity_arrows + force_arrows + [info_text]
+            return bodies + flat_trails + velocity_arrows + force_arrows + glow_objects + [info_text]
         
         # シミュレーション進行
         simulator.step(config.steps_per_frame)
@@ -1207,6 +1216,12 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             bodies[i].set_data([x], [y])
             bodies[i].set_3d_properties([z])
             bodies[i].set_markersize(size)
+            
+            # グロー（輝き）エフェクトの更新
+            if i < len(glow_objects):
+                glow_objects[i].set_data([x], [y])
+                glow_objects[i].set_3d_properties([z])
+                glow_objects[i].set_markersize(size * 2.5)  # 天体より大きく
             
             if state.trail_history[i]:
                 trail_arr = np.array(state.trail_history[i])
@@ -1273,7 +1288,7 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         
         # trailsはネストリストなのでflatten
         flat_trails = [seg for segs in trails for seg in segs]
-        return bodies + flat_trails + velocity_arrows + force_arrows + ghost_bodies + ghost_trails + [info_text]
+        return bodies + flat_trails + velocity_arrows + force_arrows + ghost_bodies + ghost_trails + glow_objects + [info_text]
     
     anim = FuncAnimation(fig, update, frames=None, blit=False, 
                          interval=config.animation_interval, cache_frame_data=False)
