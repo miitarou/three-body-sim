@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import time
 
 
@@ -897,8 +898,9 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         # 既存のプロットオブジェクトをAxesから削除
         for body in bodies:
             body.remove()
-        for trail in trails:
-            trail.remove()
+        for trail_segments in trails:
+            for segment in trail_segments:
+                segment.remove()
         for arrow in velocity_arrows:
             arrow.remove()
         for force in force_arrows:
@@ -916,12 +918,23 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
         ghost_trails.clear()
         colors = plt.cm.tab10(np.linspace(0, 1, max(n, 10)))[:n]
         
+        # 軌跡のセグメント数（グラデーション効果用）
+        n_segments = 10
+        
         for i in range(n):
             body, = ax_3d.plot([], [], [], 'o', color=colors[i], markersize=10,
                               markeredgecolor='white', markeredgewidth=1)
             bodies.append(body)
-            trail, = ax_3d.plot([], [], [], '-', color=colors[i], alpha=0.4, linewidth=1)
-            trails.append(trail)
+            
+            # 軌跡をセグメントに分割（直近=太く濃く、過去=細く淡く）
+            trail_segments = []
+            for seg in range(n_segments):
+                # seg=0が最も古い、seg=n_segments-1が最も新しい
+                alpha = 0.1 + 0.6 * (seg / (n_segments - 1))  # 0.1 → 0.7
+                lw = 0.5 + 2.0 * (seg / (n_segments - 1))     # 0.5 → 2.5
+                line, = ax_3d.plot([], [], [], '-', color=colors[i], alpha=alpha, linewidth=lw)
+                trail_segments.append(line)
+            trails.append(trail_segments)
             arrow, = ax_3d.plot([], [], [], '-', color=colors[i], linewidth=1.5, alpha=0.7)
             velocity_arrows.append(arrow)
             force, = ax_3d.plot([], [], [], '-', color='#ff4444', linewidth=2, alpha=0.8)
@@ -1136,7 +1149,9 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
                     fx, fy, fz = forces[i] * config.force_arrow_scale
                     force_arrows[i].set_data([x, x+fx], [y, y+fy])
                     force_arrows[i].set_3d_properties([z, z+fz])
-            return bodies + trails + velocity_arrows + force_arrows + [info_text]
+            # trailsはネストリストなのでflatten
+            flat_trails = [seg for segs in trails for seg in segs]
+            return bodies + flat_trails + velocity_arrows + force_arrows + [info_text]
         
         # シミュレーション進行
         simulator.step(config.steps_per_frame)
@@ -1195,8 +1210,30 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             
             if state.trail_history[i]:
                 trail_arr = np.array(state.trail_history[i])
-                trails[i].set_data(trail_arr[:, 0], trail_arr[:, 1])
-                trails[i].set_3d_properties(trail_arr[:, 2])
+                n_points = len(trail_arr)
+                n_segments = len(trails[i])
+                
+                # 軌跡をセグメントに分割して描画
+                for seg_idx, segment_line in enumerate(trails[i]):
+                    # 各セグメントの開始・終了インデックス
+                    start = int(seg_idx * n_points / n_segments)
+                    end = int((seg_idx + 1) * n_points / n_segments)
+                    if end <= start:
+                        end = start + 1
+                    if end > n_points:
+                        end = n_points
+                    
+                    if start < n_points:
+                        seg_data = trail_arr[start:end]
+                        if len(seg_data) > 0:
+                            segment_line.set_data(seg_data[:, 0], seg_data[:, 1])
+                            segment_line.set_3d_properties(seg_data[:, 2])
+                        else:
+                            segment_line.set_data([], [])
+                            segment_line.set_3d_properties([])
+                    else:
+                        segment_line.set_data([], [])
+                        segment_line.set_3d_properties([])
             
             # 速度ベクトル
             arrow_end = [x + vx * config.velocity_arrow_scale, 
@@ -1234,7 +1271,9 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             state.azim += 0.3
             ax_3d.view_init(elev=20, azim=state.azim)
         
-        return bodies + trails + velocity_arrows + force_arrows + ghost_bodies + ghost_trails + [info_text]
+        # trailsはネストリストなのでflatten
+        flat_trails = [seg for segs in trails for seg in segs]
+        return bodies + flat_trails + velocity_arrows + force_arrows + ghost_bodies + ghost_trails + [info_text]
     
     anim = FuncAnimation(fig, update, frames=None, blit=False, 
                          interval=config.animation_interval, cache_frame_data=False)
