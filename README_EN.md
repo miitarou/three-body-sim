@@ -69,6 +69,9 @@ python nbody_simulation_advanced.py
 | **E** | Editor panel | View body count and masses |
 | **P** | Prediction Quiz | Predict state 2.5 seconds ahead and compete for score |
 | **M** | Periodic solutions | Cycle through famous periodic orbits |
+| **B** | Rewind | Go back to previous Generation |
+| **S** | Save | Export current initial conditions to JSON file |
+| **L** | Load | Reproduce orbit from JSON file |
 | **3-9** | Change body count | Freely switch between 3 to 9 bodies |
 
 ### Periodic Solution Catalog (M key)

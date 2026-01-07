@@ -492,6 +492,10 @@ class SimulationState:
     
     # 軌跡
     trail_history: List[List[np.ndarray]] = field(default_factory=list)
+    
+    # 初期条件履歴（巻き戻し用）
+    history_buffer: List[dict] = field(default_factory=list)
+    history_max_size: int = 10
 
     def __post_init__(self) -> None:
         if not self.trail_history:
@@ -511,6 +515,8 @@ class NBodySimulator:
         self.config = config or SimulationConfig()
         self.config.validate()
         self.state = self._create_initial_state()
+        # 最初の状態を履歴に保存
+        self.save_to_history()
     
     def _create_initial_state(self) -> SimulationState:
         """初期状態を作成"""
@@ -567,6 +573,9 @@ class NBodySimulator:
         self.state.sim_time = 0.0
         self.state.trail_history = [[] for _ in range(self.state.n_bodies)]
         self.state.prediction_mode = False
+        
+        # 履歴に自動保存
+        self.save_to_history()
     
     def change_n_bodies(self, new_n: int) -> None:
         """物体数を変更"""
@@ -783,6 +792,89 @@ class NBodySimulator:
             self.state.ghost_trail_history[i].append(self.state.ghost_positions[i].copy())
             if len(self.state.ghost_trail_history[i]) > self.config.max_trail:
                 self.state.ghost_trail_history[i].pop(0)
+    
+    def save_to_history(self) -> None:
+        """現在の初期条件を履歴に保存"""
+        snapshot = {
+            'positions': self.state.positions.copy(),
+            'velocities': self.state.velocities.copy(),
+            'masses': self.state.masses.copy(),
+            'n_bodies': self.state.n_bodies,
+            'generation': self.state.generation
+        }
+        self.state.history_buffer.append(snapshot)
+        # 最大サイズを超えたら古いものを削除
+        if len(self.state.history_buffer) > self.state.history_max_size:
+            self.state.history_buffer.pop(0)
+    
+    def rewind(self) -> bool:
+        """直前のGenerationに巻き戻す（B key用）"""
+        if len(self.state.history_buffer) < 2:
+            print("[B] No history to rewind to")
+            return False
+        
+        # 現在の状態を削除して1つ前に戻る
+        self.state.history_buffer.pop()
+        prev = self.state.history_buffer[-1]
+        
+        self.state.positions = prev['positions'].copy()
+        self.state.velocities = prev['velocities'].copy()
+        self.state.masses = prev['masses'].copy()
+        self.state.n_bodies = prev['n_bodies']
+        self.state.sim_time = 0.0
+        self.state.trail_history = [[] for _ in range(self.state.n_bodies)]
+        
+        print(f"[B] Rewound to Generation {prev['generation']}")
+        return True
+    
+    def export_json(self, filepath: Optional[str] = None) -> str:
+        """初期条件をJSONファイルにエクスポート（S key用）"""
+        import json
+        from datetime import datetime
+        
+        if filepath is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filepath = f'orbit_{timestamp}.json'
+        
+        data = {
+            'positions': self.state.positions.tolist(),
+            'velocities': self.state.velocities.tolist(),
+            'masses': self.state.masses.tolist(),
+            'n_bodies': self.state.n_bodies,
+            'generation': self.state.generation,
+            'exported_at': datetime.now().isoformat()
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        print(f"[S] Exported to {filepath}")
+        return filepath
+    
+    def import_json(self, filepath: str) -> bool:
+        """JSONファイルから初期条件をインポート（L key用）"""
+        import json
+        
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            self.state.positions = np.array(data['positions'])
+            self.state.velocities = np.array(data['velocities'])
+            self.state.masses = np.array(data['masses'])
+            self.state.n_bodies = data['n_bodies']
+            self.state.sim_time = 0.0
+            self.state.trail_history = [[] for _ in range(self.state.n_bodies)]
+            self.state.generation += 1
+            
+            # 履歴に保存
+            self.save_to_history()
+            
+            print(f"[L] Imported from {filepath}")
+            return True
+        except Exception as e:
+            print(f"[L] Import failed: {e}")
+            return False
     
     def run(self) -> None:
         """GUIを起動して実行"""
@@ -1118,6 +1210,40 @@ def run_simulation_gui(simulator: NBodySimulator) -> FuncAnimation:
             
             if state.show_editor:
                 update_editor_panel()
+        
+        elif event.key == 'b':
+            # 巻き戻し
+            if simulator.rewind():
+                create_plot_objects(state.n_bodies)
+                if state.ghost_mode:
+                    simulator.toggle_ghost_mode()  # OFF
+                    simulator.toggle_ghost_mode()  # ON（新しい位置で）
+        
+        elif event.key == 's':
+            # エクスポート
+            filepath = simulator.export_json()
+            prediction_text.set_text(f'[S] Saved to:\\n{filepath}')
+            prediction_text.set_visible(True)
+        
+        elif event.key == 'l':
+            # インポート（ファイル選択ダイアログ）
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            filepath = filedialog.askopenfilename(
+                title='Select orbit file',
+                filetypes=[('JSON files', '*.json'), ('All files', '*.*')]
+            )
+            root.destroy()
+            if filepath:
+                if simulator.import_json(filepath):
+                    create_plot_objects(state.n_bodies)
+                    prediction_text.set_text(f'[L] Loaded from:\\n{filepath}')
+                    prediction_text.set_visible(True)
+                    if state.ghost_mode:
+                        simulator.toggle_ghost_mode()  # OFF
+                        simulator.toggle_ghost_mode()  # ON
         
         elif event.key in ['+', '=']:
             state.zoom = max(0.3, state.zoom * 0.8)
