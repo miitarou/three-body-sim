@@ -188,6 +188,37 @@ F = G × m₁ × m₂ / r²
 
 ---
 
+## 🚀 Mojo高速化バックエンド (Experimental)
+
+計算コアをMojoで書き直すことで、**Python/NumPyの約27倍の高速化**を実現しています。
+
+### ベンチマーク結果（10000ステップ）
+
+| バックエンド | 実行時間 | 速度比 |
+|-------------|---------|--------|
+| Python/NumPy | 0.83秒 | 1.0x |
+| **Mojo** | 0.03秒 | **26.9x** |
+
+### Mojoバックエンドのセットアップ
+
+```bash
+# Pixi（パッケージマネージャー）をインストール
+curl -fsSL https://pixi.sh/install.sh | sh
+
+# Mojoをインストールしてビルド
+cd three-body-sim
+pixi add mojo
+pixi run mojo build mojo_physics.mojo -o mojo_physics
+```
+
+### ベンチマーク実行
+
+```bash
+pixi run python benchmark.py
+```
+
+---
+
 ## 📁 ファイル構成
 
 ```
@@ -195,7 +226,12 @@ three-body-sim/
 ├── nbody_simulation_advanced.py  # メインシミュレーター
 ├── test_nbody.py                 # テストスイート
 ├── demo.gif                      # デモ動画
-└── README.md                     # このファイル
+├── README.md                     # このファイル
+│
+├── mojo_physics.mojo             # Mojo高速計算モジュール
+├── mojo_backend.py               # MojoバックエンドPythonラッパー
+├── benchmark.py                  # ベンチマークスクリプト
+└── pixi.toml                     # Pixiプロジェクト設定
 ```
 
 ---
