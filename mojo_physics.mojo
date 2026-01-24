@@ -190,8 +190,119 @@ fn compute_energy(
     return ke + pe
 
 
-fn main():
-    """Benchmark the physics calculations."""
+from python import Python, PythonObject
+
+fn read_line(sys: PythonObject) raises -> String:
+    """Read a line from stdin."""
+    var line = sys.stdin.readline()
+    return String(String(line).strip())
+
+fn run_ipc_server() raises:
+    """Run in IPC server mode: read state, compute, write state."""
+    print("READY") # Signal to Python that we are ready
+    
+    # We'll use Python interop for robust I/O for now
+    var sys = Python.import_module("sys")
+    
+    while True:
+        try:
+            var line_obj = sys.stdin.readline()
+            var line_str = String(line_obj)
+            if not line_str:
+                break
+                
+            var text = String(line_str.strip())
+            if text == "EXIT":
+                break
+            
+            # Protocol: 
+            # Input: N DT SOFTENING G STEPS
+            # Input: MASSES (space separated)
+            # Input: POS_X POS_Y POS_Z (per body, one line)
+            # Input: VEL_X VEL_Y VEL_Z (per body, one line)
+            
+            var params = text.split(" ")
+            var n = atol(params[0])
+            var dt = atof(params[1])
+            var softening = atof(params[2])
+            var g = atof(params[3])
+            var steps = 1
+            if len(params) > 4:
+                steps = atol(params[4])
+            
+            var masses_line = String(String(sys.stdin.readline()).strip())
+            var masses_str = masses_line.split(" ")
+            var masses = List[Float64](capacity=n)
+            for i in range(n):
+                masses.append(atof(masses_str[i]))
+                
+            var positions = List[Vec3](capacity=n)
+            var positions_line = String(String(sys.stdin.readline()).strip())
+            var pos_parts = positions_line.split(" ")
+            for i in range(n):
+                positions.append(Vec3(atof(pos_parts[i*3]), atof(pos_parts[i*3+1]), atof(pos_parts[i*3+2])))
+                
+            var velocities = List[Vec3](capacity=n)
+            var velocities_line = String(String(sys.stdin.readline()).strip())
+            var vel_parts = velocities_line.split(" ")
+            for i in range(n):
+                velocities.append(Vec3(atof(vel_parts[i*3]), atof(vel_parts[i*3+1]), atof(vel_parts[i*3+2])))
+            
+            # Compute steps (Batch Processing)
+            var current_pos = positions^
+            var current_vel = velocities^
+            
+            for _ in range(steps):
+                # We interpret rk4_step as taking owned arguments or we provide copies.
+                # Since List is not implicitly copyable, we must be explicit.
+                var result = rk4_step(current_pos.copy(), current_vel.copy(), masses, softening, dt, g)
+                
+                # Assign new values. Since 'result' owns the lists, calling copy() is safe.
+                # Using copy() avoids complex move semantics with tuples for now.
+                current_pos = result[0].copy()
+                current_vel = result[1].copy()
+                
+            var new_pos = current_pos^
+            var new_vel = current_vel^
+            
+            # Output:
+            # POS_X POS_Y POS_Z ...
+            # VEL_X VEL_Y VEL_Z ...
+            
+            var out_pos = String("")
+            for i in range(n):
+                if i > 0: out_pos += " "
+                out_pos += String(new_pos[i].x) + " " + String(new_pos[i].y) + " " + String(new_pos[i].z)
+            print(out_pos)
+            
+            var out_vel = String("")
+            for i in range(n):
+                if i > 0: out_vel += " "
+                out_vel += String(new_vel[i].x) + " " + String(new_vel[i].y) + " " + String(new_vel[i].z)
+            print(out_vel)
+            
+            # Flush stdout to ensure Python gets it immediately
+            sys.stdout.flush()
+            
+        except e:
+            # On error, try to print it and continue or exit
+            print("ERROR: " + String(e))
+            sys.stdout.flush()
+            break
+
+fn main() raises:
+    """
+    Main entry point.
+    If 'ipc' argument is provided, run in IPC server mode.
+    Otherwise run benchmark.
+    """
+    from sys import argv
+    var args = argv()
+    
+    if len(args) > 1 and args[1] == "ipc":
+        run_ipc_server()
+        return
+
     print("N-Body Physics Benchmark (Mojo)")
     print("=" * 40)
 

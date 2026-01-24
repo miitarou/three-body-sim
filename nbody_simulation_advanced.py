@@ -356,6 +356,8 @@ def adaptive_timestep(
     return max(min_dt, min(max_dt, dt))
 
 
+import mojo_backend
+
 def rk4_step_adaptive(
     positions: np.ndarray,
     velocities: np.ndarray,
@@ -369,20 +371,14 @@ def rk4_step_adaptive(
     """適応タイムステップ付きRK4積分"""
     dt = adaptive_timestep(positions, base_dt, min_dt, max_dt)
     
-    k1_r = velocities
-    k1_v = compute_accelerations_vectorized(positions, masses, softening, g)
+    # Mojoバックエンドを使用（利用可能な場合）
+    # バックエンド側でNumPyフォールバックも持っているが、
+    # ここではエンジンを取得して委譲する
+    engine = mojo_backend.get_engine()
     
-    k2_r = velocities + 0.5 * dt * k1_v
-    k2_v = compute_accelerations_vectorized(positions + 0.5 * dt * k1_r, masses, softening, g)
-    
-    k3_r = velocities + 0.5 * dt * k2_v
-    k3_v = compute_accelerations_vectorized(positions + 0.5 * dt * k2_r, masses, softening, g)
-    
-    k4_r = velocities + dt * k3_v
-    k4_v = compute_accelerations_vectorized(positions + dt * k3_r, masses, softening, g)
-    
-    new_pos = positions + (dt / 6.0) * (k1_r + 2*k2_r + 2*k3_r + k4_r)
-    new_vel = velocities + (dt / 6.0) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
+    new_pos, new_vel = engine.rk4_step(
+        positions, velocities, masses, softening, dt, g
+    )
     
     return new_pos, new_vel, dt
 
