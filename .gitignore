@@ -4,3 +4,8 @@ __pycache__/
 .DS_Store
 .coverage
 .pytest_cache/
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+# Mojo compiled binary
+mojo_physics
