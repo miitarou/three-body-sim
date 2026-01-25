@@ -1128,6 +1128,15 @@ class NBodySimulator:
 
     def on_key_press(self, event):
         """キーボードイベント処理"""
+        try:
+            self._handle_key_press(event)
+        except Exception as e:
+            print(f"[!] Error in key handler: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _handle_key_press(self, event):
+        """キーボードイベント処理の実装"""
         if event.text == ' ':
             self.paused = not self.paused
             print("⏸️  Paused" if self.paused else "▶️  Resumed")
@@ -1270,10 +1279,19 @@ class NBodySimulator:
                 from tkinter import filedialog
                 root = tk.Tk()
                 root.withdraw()
+                # ウィンドウを最前面に
+                root.attributes('-topmost', True)
+                root.update()
+
                 filepath = filedialog.askopenfilename(
                     title='Load Initial Conditions',
                     filetypes=[('JSON files', '*.json'), ('All files', '*.*')]
                 )
+
+                # tkinterウィンドウを完全にクリーンアップ
+                root.attributes('-topmost', False)
+                root.update()
+                root.quit()
                 root.destroy()
 
                 if filepath:
@@ -1287,11 +1305,16 @@ class NBodySimulator:
                         if self.ghost_mode:
                             self._initialize_ghost()
             except Exception as e:
-                print(f"[L] Error: {e}")
+                print(f"[L] Error loading file: {e}")
 
         elif event.text == 'q':
-            self.canvas.close()
-            app.quit()
+            # 安全に終了（canvasのcloseでアプリも終了する）
+            try:
+                self.canvas.close()
+            except Exception as e:
+                print(f"[Q] Warning during shutdown: {e}")
+                import sys
+                sys.exit(0)
 
         elif event.text in '3456789':
             self.config.n_bodies = int(event.text)
