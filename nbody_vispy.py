@@ -836,7 +836,7 @@ class NBodySimulator:
         scene.visuals.Line(
             pos=np.array([[-r, -r, -r], [r, -r, -r]]),
             color=axis_color,
-            width=3.0,
+            width=1.5,
             parent=self.view.scene
         )
 
@@ -844,7 +844,7 @@ class NBodySimulator:
         scene.visuals.Line(
             pos=np.array([[-r, -r, -r], [-r, r, -r]]),
             color=axis_color,
-            width=3.0,
+            width=1.5,
             parent=self.view.scene
         )
 
@@ -852,7 +852,7 @@ class NBodySimulator:
         scene.visuals.Line(
             pos=np.array([[-r, -r, -r], [-r, -r, r]]),
             color=axis_color,
-            width=3.0,
+            width=1.5,
             parent=self.view.scene
         )
 
@@ -890,25 +890,28 @@ class NBodySimulator:
             # X軸の目盛り
             scene.visuals.Text(
                 label,
-                pos=(tick, -r - 0.2, -r),
-                color=(0.9, 0.9, 0.9),
-                font_size=10,
+                pos=(tick, -r - 0.3, -r),
+                color=(1.0, 1.0, 1.0),
+                font_size=14,
+                bold=True,
                 parent=self.view.scene
             )
             # Y軸の目盛り
             scene.visuals.Text(
                 label,
-                pos=(-r - 0.2, tick, -r),
-                color=(0.9, 0.9, 0.9),
-                font_size=10,
+                pos=(-r - 0.3, tick, -r),
+                color=(1.0, 1.0, 1.0),
+                font_size=14,
+                bold=True,
                 parent=self.view.scene
             )
             # Z軸の目盛り
             scene.visuals.Text(
                 label,
-                pos=(-r - 0.2, -r, tick),
-                color=(0.9, 0.9, 0.9),
-                font_size=10,
+                pos=(-r - 0.3, -r, tick),
+                color=(1.0, 1.0, 1.0),
+                font_size=14,
+                bold=True,
                 parent=self.view.scene
             )
 
