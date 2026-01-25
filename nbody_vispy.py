@@ -395,10 +395,11 @@ class NBodySimulator:
         self.last_frame_time = time.time()
 
         # Canvas作成
+        # ウィンドウを非表示で作成（フラグ設定後に表示）
         self.canvas = scene.SceneCanvas(
             keys='interactive',
             size=(1200, 900),
-            show=True,
+            show=False,  # フラグ設定後に表示
             title='N-Body Simulator (Vispy GPU Edition)',
             bgcolor='#0a0a1a',  # 深い宇宙色（ほぼ黒だがわずかに青み）
             resizable=True
@@ -505,11 +506,10 @@ class NBodySimulator:
                             # フルスクリーンボタンヒントを除外
                             new_flags = current_flags & ~Qt.WindowFullscreenButtonHint
 
-                            # フラグを設定
-                            was_visible = native.isVisible()
+                            # フラグを設定してウィンドウを再表示
                             native.setWindowFlags(new_flags)
-                            if was_visible:
-                                native.show()
+                            # フラグ変更後は必ずshow()が必要
+                            native.show()
 
                             fullscreen_disabled = True
                             print("[✓] Disabled macOS fullscreen button")
@@ -523,6 +523,9 @@ class NBodySimulator:
         if not fullscreen_disabled:
             print("[!] WARNING: macOS fullscreen button may cause crashes!")
             print("    Please resize window manually instead of using fullscreen.")
+
+        # ウィンドウを表示（フラグ設定後）
+        self.canvas.show()
 
         # アニメーションタイマー
         self.timer = app.Timer(
