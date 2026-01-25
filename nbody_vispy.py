@@ -735,32 +735,26 @@ class NBodySimulator:
             return False
 
     def _create_grid_lines(self):
-        """グリッド線を作成（Matplotlibのpane風）"""
+        """グリッド線を作成（Matplotlib風に控えめに）"""
         r = self.config.display_range
-        # 12本のエッジライン（立方体のワイヤーフレーム）
-        edges = [
-            # 底面
-            [[-r, -r, -r], [r, -r, -r]],
-            [[r, -r, -r], [r, r, -r]],
-            [[r, r, -r], [-r, r, -r]],
-            [[-r, r, -r], [-r, -r, -r]],
-            # 上面
-            [[-r, -r, r], [r, -r, r]],
-            [[r, -r, r], [r, r, r]],
-            [[r, r, r], [-r, r, r]],
-            [[-r, r, r], [-r, -r, r]],
-            # 垂直エッジ
-            [[-r, -r, -r], [-r, -r, r]],
-            [[r, -r, -r], [r, -r, r]],
-            [[r, r, -r], [r, r, r]],
-            [[-r, r, -r], [-r, r, r]],
-        ]
 
-        for edge in edges:
+        # XY平面のグリッド（底面）- 非常に薄く
+        n_lines = 5
+        step = 2 * r / n_lines
+        for i in range(n_lines + 1):
+            pos = -r + i * step
+            # X方向の線
             line = scene.visuals.Line(
-                pos=np.array(edge),
-                color=(0.5, 0.5, 0.5, 0.5),
-                width=1.0,
+                pos=np.array([[pos, -r, -r], [pos, r, -r]]),
+                color=(0.3, 0.3, 0.3, 0.15),
+                width=0.5,
+                parent=self.view.scene
+            )
+            # Y方向の線
+            line = scene.visuals.Line(
+                pos=np.array([[-r, pos, -r], [r, pos, -r]]),
+                color=(0.3, 0.3, 0.3, 0.15),
+                width=0.5,
                 parent=self.view.scene
             )
 
