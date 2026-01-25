@@ -386,6 +386,10 @@ class NBodySimulator:
         # ズーム
         self.zoom = 1.0
 
+        # 履歴バッファ（巻き戻し用）
+        self.history_buffer: List[dict] = []
+        self.max_history = 10
+
         # FPS計測
         self.frame_times: List[float] = []
         self.last_frame_time = time.time()
@@ -497,6 +501,9 @@ class NBodySimulator:
         print("  [E]     = Editor panel (show body info)")
         print("  [P]     = Prediction quiz (guess what happens next)")
         print("  [M]     = Cycle through periodic solutions (10 types)")
+        print("  [B]     = Rewind to previous generation")
+        print("  [S]     = Save current state to JSON")
+        print("  [L]     = Load state from JSON")
         print("  [+/-]   = Zoom in/out")
         print("  [3-9]   = Change number of bodies")
         print("  [Q]     = Quit")
@@ -575,6 +582,163 @@ class NBodySimulator:
         # ゴーストモードがONなら初期化
         if self.ghost_mode:
             self._initialize_ghost()
+
+        # 履歴に保存
+        self.save_to_history()
+
+    def save_to_history(self):
+        """現在の初期条件を履歴に保存"""
+        snapshot = {
+            'positions': self.positions.copy(),
+            'velocities': self.velocities.copy(),
+            'masses': self.masses.copy(),
+            'n_bodies': self.config.n_bodies,
+            'generation': self.generation,
+            'periodic_mode': self.periodic_mode,
+            'periodic_index': self.periodic_index if self.periodic_mode else 0
+        }
+        self.history_buffer.append(snapshot)
+
+        # 履歴が上限を超えたら古いものを削除
+        if len(self.history_buffer) > self.max_history:
+            self.history_buffer.pop(0)
+
+    def rewind(self) -> bool:
+        """直前のGenerationに巻き戻す"""
+        if len(self.history_buffer) < 2:
+            print("[B] No history to rewind to")
+            return False
+
+        # 現在の状態を削除して1つ前に戻る
+        self.history_buffer.pop()
+        snapshot = self.history_buffer[-1]
+
+        # 状態を復元
+        self.positions = snapshot['positions'].copy()
+        self.velocities = snapshot['velocities'].copy()
+        self.masses = snapshot['masses'].copy()
+        self.config.n_bodies = snapshot['n_bodies']
+        self.generation = snapshot['generation']
+        self.periodic_mode = snapshot['periodic_mode']
+        self.periodic_index = snapshot['periodic_index']
+
+        # 軌跡とゴーストをリセット
+        self.trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+        self.ghost_trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+
+        # ビジュアルを再作成
+        self._recreate_visuals()
+
+        print(f"[B] Rewound to Generation {self.generation}")
+        return True
+
+    def _recreate_visuals(self):
+        """ビジュアルオブジェクトを再作成"""
+        # 軌跡ビジュアル再作成
+        for visual in self.trail_visuals:
+            visual.parent = None
+        self.trail_visuals.clear()
+
+        for i in range(self.config.n_bodies):
+            color = self._get_trail_color(i)
+            line = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=color,
+                width=1.5,
+                parent=self.view.scene
+            )
+            self.trail_visuals.append(line)
+
+        # ゴースト軌跡ビジュアル再作成
+        for visual in self.ghost_trail_visuals:
+            visual.parent = None
+        self.ghost_trail_visuals.clear()
+
+        for i in range(self.config.n_bodies):
+            color = self._get_trail_color(i)
+            ghost_color = (color[0], color[1], color[2], 0.4)
+            line = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=ghost_color,
+                width=1.0,
+                parent=self.view.scene
+            )
+            line.visible = False
+            self.ghost_trail_visuals.append(line)
+
+        # 力矢印ビジュアル再作成
+        for visual in self.force_visuals:
+            visual.parent = None
+        self.force_visuals.clear()
+
+        for _ in range(self.config.n_bodies):
+            arrow = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=(1.0, 0.3, 0.3, 0.9),
+                width=3.0,
+                parent=self.view.scene
+            )
+            arrow.visible = False
+            self.force_visuals.append(arrow)
+
+        # ゴーストモードがONなら再初期化
+        if self.ghost_mode:
+            self._initialize_ghost()
+
+    def export_json(self, filepath: Optional[str] = None) -> str:
+        """初期条件をJSONファイルにエクスポート"""
+        import json
+        from datetime import datetime
+
+        if filepath is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filepath = f'nbody_save_{timestamp}.json'
+
+        data = {
+            'positions': self.positions.tolist(),
+            'velocities': self.velocities.tolist(),
+            'masses': self.masses.tolist(),
+            'n_bodies': self.config.n_bodies,
+            'generation': self.generation,
+            'exported_at': datetime.now().isoformat()
+        }
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        print(f"[S] Saved to {filepath}")
+        return filepath
+
+    def import_json(self, filepath: str) -> bool:
+        """JSONファイルから初期条件をインポート"""
+        import json
+
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            self.positions = np.array(data['positions'])
+            self.velocities = np.array(data['velocities'])
+            self.masses = np.array(data['masses'])
+            self.config.n_bodies = data['n_bodies']
+            self.generation = data.get('generation', 1)
+
+            # 軌跡とゴーストをリセット
+            self.trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+            self.ghost_trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+
+            # ビジュアルを再作成
+            self._recreate_visuals()
+
+            # 履歴に保存
+            self.save_to_history()
+
+            print(f"[L] Loaded from {filepath}")
+            return True
+
+        except Exception as e:
+            print(f"[L] Error loading file: {e}")
+            return False
 
     def _initialize_ghost(self):
         """ゴーストを初期化（わずかにずらした初期条件）"""
@@ -908,6 +1072,47 @@ class NBodySimulator:
             self.zoom = min(3.0, self.zoom + 0.1)
             self.view.camera.distance = 4.0 / self.zoom
             print(f"🔍 Zoom: {self.zoom:.1f}x")
+
+        elif event.text == 'b':
+            # 巻き戻し
+            if self.rewind():
+                # ゴーストモードがONなら再初期化
+                if self.ghost_mode:
+                    self._initialize_ghost()
+
+        elif event.text == 's':
+            # 保存
+            filepath = self.export_json()
+            self.quiz_visual.text = f'[S] Saved to:\n{filepath}'
+            self.quiz_visual.visible = True
+            # 3秒後に非表示
+            self.canvas.app.Timer(interval=3.0, connect=self._hide_quiz_text, iterations=1, start=True)
+
+        elif event.text == 'l':
+            # 読込（ファイル選択ダイアログ）
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                filepath = filedialog.askopenfilename(
+                    title='Load Initial Conditions',
+                    filetypes=[('JSON files', '*.json'), ('All files', '*.*')]
+                )
+                root.destroy()
+
+                if filepath:
+                    if self.import_json(filepath):
+                        self.quiz_visual.text = f'[L] Loaded from:\n{filepath}'
+                        self.quiz_visual.visible = True
+                        # 3秒後に非表示
+                        self.canvas.app.Timer(interval=3.0, connect=self._hide_quiz_text, iterations=1, start=True)
+
+                        # ゴーストモードがONなら再初期化
+                        if self.ghost_mode:
+                            self._initialize_ghost()
+            except Exception as e:
+                print(f"[L] Error: {e}")
 
         elif event.text == 'q':
             self.canvas.close()
