@@ -44,6 +44,7 @@ class Config:
     steps_per_frame: int = 10
     bound_limit: float = 5.0
     target_fps: int = 60
+    force_arrow_scale: float = 0.15
 
 
 # ============================================================
@@ -246,6 +247,29 @@ def compute_accelerations(
     return accelerations
 
 
+def compute_forces(
+    positions: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    g: float = 1.0
+) -> np.ndarray:
+    """各物体にかかる力を計算（力ベクトル表示用）"""
+    n = len(masses)
+    forces = np.zeros_like(positions)
+    eps2 = softening ** 2
+
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                r_ij = positions[j] - positions[i]
+                r2 = np.dot(r_ij, r_ij) + eps2
+                force_mag = g * masses[i] * masses[j] / r2
+                force_dir = r_ij / np.sqrt(r2)
+                forces[i] += force_mag * force_dir
+
+    return forces
+
+
 def compute_min_distance(positions: np.ndarray) -> float:
     """最小距離を計算"""
     n = len(positions)
@@ -340,6 +364,15 @@ class NBodySimulator:
         self.paused = False
         self.periodic_mode = False
         self.periodic_index = 0
+        self.show_forces = False
+        self.auto_rotate = False
+        self.rotation_angle = 0.0
+
+        # ゴーストモード（カオス可視化）
+        self.ghost_mode = False
+        self.ghost_positions: Optional[np.ndarray] = None
+        self.ghost_velocities: Optional[np.ndarray] = None
+        self.ghost_trails: List[np.ndarray] = []
 
         # FPS計測
         self.frame_times: List[float] = []
@@ -365,11 +398,30 @@ class NBodySimulator:
         # 座標軸を追加
         scene.visuals.XYZAxis(parent=self.view.scene)
 
+        # 境界ボックスを追加（ワイヤーフレーム）
+        r = self.config.display_range
+        self.boundary_box = scene.visuals.Box(
+            width=r*2, height=r*2, depth=r*2,
+            color=(0.3, 0.3, 0.3, 0.3),
+            edge_color=(0.5, 0.5, 0.5, 0.8),
+            parent=self.view.scene
+        )
+
         # 天体用のMarkersビジュアル
         self.body_visual = scene.visuals.Markers(parent=self.view.scene)
 
+        # ゴースト天体用のMarkersビジュアル
+        self.ghost_body_visual = scene.visuals.Markers(parent=self.view.scene)
+        self.ghost_body_visual.visible = False
+
         # 軌跡用のLineビジュアル
         self.trail_visuals: List[scene.visuals.Line] = []
+
+        # ゴースト軌跡用のLineビジュアル
+        self.ghost_trail_visuals: List[scene.visuals.Line] = []
+
+        # 力ベクトル用のLineビジュアル
+        self.force_visuals: List[scene.visuals.Line] = []
 
         # テキスト表示
         self.text_visual = scene.visuals.Text(
@@ -405,6 +457,9 @@ class NBodySimulator:
         print("🎮 Controls:")
         print("  [SPACE] = Pause/Resume")
         print("  [R]     = Restart with new conditions")
+        print("  [A]     = Auto-rotate camera")
+        print("  [F]     = Show force vectors")
+        print("  [G]     = Ghost mode (chaos visualization)")
         print("  [M]     = Cycle through periodic solutions (10 types)")
         print("  [3-9]   = Change number of bodies")
         print("  [Q]     = Quit")
@@ -430,6 +485,7 @@ class NBodySimulator:
 
         self.generation += 1
         self.trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+        self.ghost_trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
 
         # 軌跡ビジュアルを再作成（天体ごとに色分け）
         for visual in self.trail_visuals:
@@ -445,6 +501,51 @@ class NBodySimulator:
                 parent=self.view.scene
             )
             self.trail_visuals.append(line)
+
+        # ゴースト軌跡ビジュアルを再作成
+        for visual in self.ghost_trail_visuals:
+            visual.parent = None
+        self.ghost_trail_visuals.clear()
+
+        for i in range(self.config.n_bodies):
+            color = self._get_trail_color(i)
+            # ゴーストは半透明・点線風
+            ghost_color = (color[0], color[1], color[2], 0.4)
+            line = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=ghost_color,
+                width=1.0,
+                parent=self.view.scene
+            )
+            line.visible = False
+            self.ghost_trail_visuals.append(line)
+
+        # 力矢印ビジュアルを再作成
+        for visual in self.force_visuals:
+            visual.parent = None
+        self.force_visuals.clear()
+
+        for _ in range(self.config.n_bodies):
+            arrow = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=(1.0, 0.3, 0.3, 0.9),
+                width=3.0,
+                parent=self.view.scene
+            )
+            arrow.visible = False
+            self.force_visuals.append(arrow)
+
+        # ゴーストモードがONなら初期化
+        if self.ghost_mode:
+            self._initialize_ghost()
+
+    def _initialize_ghost(self):
+        """ゴーストを初期化（わずかにずらした初期条件）"""
+        perturbation = 0.001
+        self.ghost_positions = self.positions.copy() + \
+            np.random.randn(*self.positions.shape) * perturbation
+        self.ghost_velocities = self.velocities.copy()
+        self.ghost_trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
 
     def update(self, event):
         """フレーム更新"""
@@ -469,6 +570,23 @@ class NBodySimulator:
                 dt,
                 self.config.g
             )
+
+            # ゴーストのシミュレーション
+            if self.ghost_mode and self.ghost_positions is not None:
+                ghost_dt = adaptive_timestep(
+                    self.ghost_positions,
+                    self.config.base_dt,
+                    self.config.min_dt,
+                    self.config.max_dt
+                )
+                self.ghost_positions, self.ghost_velocities = rk4_step(
+                    self.ghost_positions,
+                    self.ghost_velocities,
+                    self.masses,
+                    softening,
+                    ghost_dt,
+                    self.config.g
+                )
 
         # 境界チェック
         if is_out_of_bounds(self.positions, self.config.bound_limit):
@@ -496,6 +614,52 @@ class NBodySimulator:
             edge_color='white',
             size=sizes
         )
+
+        # ゴースト描画更新
+        if self.ghost_mode and self.ghost_positions is not None:
+            # ゴースト軌跡更新
+            for i in range(self.config.n_bodies):
+                self.ghost_trails[i] = np.vstack([self.ghost_trails[i], self.ghost_positions[i:i+1]])
+                if len(self.ghost_trails[i]) > self.config.max_trail:
+                    self.ghost_trails[i] = self.ghost_trails[i][-self.config.max_trail:]
+
+                if len(self.ghost_trails[i]) > 1:
+                    self.ghost_trail_visuals[i].set_data(pos=self.ghost_trails[i])
+                    self.ghost_trail_visuals[i].visible = True
+
+            # ゴースト天体描画
+            ghost_colors = colors.copy()
+            ghost_colors[:, 3] = 0.5  # 半透明
+            self.ghost_body_visual.set_data(
+                pos=self.ghost_positions,
+                face_color=ghost_colors,
+                edge_color=(1, 1, 1, 0.5),
+                size=sizes * 0.8
+            )
+            self.ghost_body_visual.visible = True
+        else:
+            self.ghost_body_visual.visible = False
+            for visual in self.ghost_trail_visuals:
+                visual.visible = False
+
+        # 力ベクトル更新
+        if self.show_forces:
+            softening = self.config.softening_periodic if self.periodic_mode else self.config.softening
+            forces = compute_forces(self.positions, self.masses, softening, self.config.g)
+            for i in range(self.config.n_bodies):
+                start = self.positions[i]
+                end = start + forces[i] * self.config.force_arrow_scale
+                arrow_line = np.array([start, end])
+                self.force_visuals[i].set_data(pos=arrow_line)
+                self.force_visuals[i].visible = True
+        else:
+            for visual in self.force_visuals:
+                visual.visible = False
+
+        # 自動回転
+        if self.auto_rotate and not self.paused:
+            self.rotation_angle += 0.5
+            self.view.camera.azimuth = self.rotation_angle
 
         # FPS計測
         current_time = time.time()
@@ -546,6 +710,27 @@ class NBodySimulator:
 
         elif event.text == 'r':
             self.restart()
+
+        elif event.text == 'a':
+            self.auto_rotate = not self.auto_rotate
+            print(f"🔄 Auto-rotate: {'ON' if self.auto_rotate else 'OFF'}")
+
+        elif event.text == 'f':
+            self.show_forces = not self.show_forces
+            print(f"⚡ Force vectors: {'ON' if self.show_forces else 'OFF'}")
+
+        elif event.text == 'g':
+            self.ghost_mode = not self.ghost_mode
+            if self.ghost_mode:
+                self._initialize_ghost()
+                print("[G] Ghost mode ON - Watch the chaos unfold!")
+            else:
+                self.ghost_positions = None
+                self.ghost_velocities = None
+                self.ghost_body_visual.visible = False
+                for visual in self.ghost_trail_visuals:
+                    visual.visible = False
+                print("[G] Ghost mode OFF")
 
         elif event.text == 'm':
             self.periodic_mode = not self.periodic_mode
