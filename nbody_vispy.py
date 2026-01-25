@@ -374,6 +374,18 @@ class NBodySimulator:
         self.ghost_velocities: Optional[np.ndarray] = None
         self.ghost_trails: List[np.ndarray] = []
 
+        # 予測クイズ
+        self.quiz_active = False
+        self.quiz_answer = 0  # 0=未設定, 1=衝突, 2=逃亡, 3=安定
+        self.quiz_correct = 0
+        self.quiz_total = 0
+
+        # エディタパネル
+        self.show_editor = False
+
+        # ズーム
+        self.zoom = 1.0
+
         # FPS計測
         self.frame_times: List[float] = []
         self.last_frame_time = time.time()
@@ -432,6 +444,28 @@ class NBodySimulator:
             parent=self.canvas.scene
         )
 
+        # 予測クイズ用テキスト
+        self.quiz_visual = scene.visuals.Text(
+            '',
+            pos=(self.canvas.size[0] // 2, 100),
+            color=(1, 0.4, 0.4),
+            font_size=14,
+            anchor_x='center',
+            parent=self.canvas.scene
+        )
+        self.quiz_visual.visible = False
+
+        # エディタパネル用テキスト
+        self.editor_visual = scene.visuals.Text(
+            '',
+            pos=(self.canvas.size[0] - 20, 200),
+            color=(1, 0.7, 0),
+            font_size=9,
+            anchor_x='right',
+            parent=self.canvas.scene
+        )
+        self.editor_visual.visible = False
+
         # イベントハンドラ
         self.canvas.events.key_press.connect(self.on_key_press)
 
@@ -460,7 +494,10 @@ class NBodySimulator:
         print("  [A]     = Auto-rotate camera")
         print("  [F]     = Show force vectors")
         print("  [G]     = Ghost mode (chaos visualization)")
+        print("  [E]     = Editor panel (show body info)")
+        print("  [P]     = Prediction quiz (guess what happens next)")
         print("  [M]     = Cycle through periodic solutions (10 types)")
+        print("  [+/-]   = Zoom in/out")
         print("  [3-9]   = Change number of bodies")
         print("  [Q]     = Quit")
         print()
@@ -547,9 +584,43 @@ class NBodySimulator:
         self.ghost_velocities = self.velocities.copy()
         self.ghost_trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
 
+    def predict_future(self, seconds: float) -> int:
+        """未来を予測（1=衝突, 2=逃亡, 3=安定）"""
+        # 現在の状態をコピー
+        sim_pos = self.positions.copy()
+        sim_vel = self.velocities.copy()
+        softening = self.config.softening_periodic if self.periodic_mode else self.config.softening
+
+        initial_pos = sim_pos.copy()
+        time = 0.0
+        min_distance_found = float('inf')
+        max_displacement = 0.0
+        collision_threshold = 0.1
+        escape_bound = 2.0
+
+        while time < seconds:
+            dt = adaptive_timestep(sim_pos, self.config.base_dt, self.config.min_dt, self.config.max_dt)
+            sim_pos, sim_vel = rk4_step(sim_pos, sim_vel, self.masses, softening, dt, self.config.g)
+            time += dt
+
+            # 最小距離チェック
+            min_dist = compute_min_distance(sim_pos)
+            min_distance_found = min(min_distance_found, min_dist)
+
+            # 最大変位チェック
+            displacement = np.max(np.linalg.norm(sim_pos - initial_pos, axis=1))
+            max_displacement = max(max_displacement, displacement)
+
+        if max_displacement > escape_bound:
+            return 2  # 逃亡
+        elif min_distance_found < collision_threshold:
+            return 1  # 衝突
+        else:
+            return 3  # 安定
+
     def update(self, event):
         """フレーム更新"""
-        if self.paused:
+        if self.paused or self.quiz_active:
             return
 
         # 物理シミュレーション
@@ -677,6 +748,20 @@ class NBodySimulator:
         backend = "Mojo" if (_physics_engine and _physics_engine.use_mojo) else "NumPy"
         self.text_visual.text = f"Gen {self.generation} | {self.config.n_bodies} bodies | {status} | {backend}"
 
+        # エディタパネル更新
+        if self.show_editor:
+            self._update_editor_panel()
+
+    def _update_editor_panel(self):
+        """エディタパネルの内容を更新"""
+        lines = ['== EDITOR ==', '-------------']
+        for i in range(self.config.n_bodies):
+            lines.append(f'Body {i}:')
+            lines.append(f'  m={self.masses[i]:.2f}')
+            lines.append(f'  pos=({self.positions[i,0]:.2f},{self.positions[i,1]:.2f},{self.positions[i,2]:.2f})')
+            lines.append(f'  vel=({self.velocities[i,0]:.2f},{self.velocities[i,1]:.2f},{self.velocities[i,2]:.2f})')
+        self.editor_visual.text = '\n'.join(lines)
+
     def _get_body_colors(self) -> np.ndarray:
         """天体の色を取得"""
         colors = np.zeros((self.config.n_bodies, 4))
@@ -741,6 +826,89 @@ class NBodySimulator:
                 print("🔄 Periodic mode OFF")
                 self.restart()
 
+        elif event.text == 'p':
+            if not self.quiz_active:
+                # クイズ開始
+                self.quiz_active = True
+                self.quiz_answer = self.predict_future(2.5)
+                quiz_text = (
+                    '[?] PREDICTION QUIZ\n'
+                    '-----------------\n'
+                    'In 2.5 seconds...\n'
+                    'What will happen?\n\n'
+                    'Press a key:\n'
+                    '  [1] Collision\n'
+                    '  [2] Escape\n'
+                    '  [3] Stable orbit\n\n'
+                    f'Score: {self.quiz_correct}/{self.quiz_total}'
+                )
+                self.quiz_visual.text = quiz_text
+                self.quiz_visual.visible = True
+                print("[?] Quiz started - What will happen in 2.5 seconds?")
+            else:
+                # クイズキャンセル
+                self.quiz_active = False
+                self.quiz_visual.visible = False
+                print("[?] Quiz cancelled")
+
+        elif event.text in '123' and self.quiz_active:
+            choice = int(event.text)
+            self.quiz_total += 1
+            correct = (choice == self.quiz_answer)
+            if correct:
+                self.quiz_correct += 1
+
+            answer_names = {1: 'Collision', 2: 'Escape', 3: 'Stable'}
+            your_answer = answer_names[choice]
+            correct_answer = answer_names[self.quiz_answer]
+
+            if correct:
+                result_text = (
+                    '[O] CORRECT!\n'
+                    '-----------------\n'
+                    f'You said: {your_answer}\n'
+                    f'Answer:   {correct_answer}\n\n'
+                    f'Score: {self.quiz_correct}/{self.quiz_total}\n\n'
+                    'Press [ENTER] to watch!'
+                )
+                print(f"[O] Correct! {your_answer}")
+            else:
+                result_text = (
+                    '[X] WRONG!\n'
+                    '-----------------\n'
+                    f'You said: {your_answer}\n'
+                    f'Answer:   {correct_answer}\n\n'
+                    f'Score: {self.quiz_correct}/{self.quiz_total}\n\n'
+                    'Press [ENTER] to watch!'
+                )
+                print(f"[X] Wrong. It was {correct_answer}, not {your_answer}")
+
+            self.quiz_visual.text = result_text
+
+        elif event.key.name == 'Enter' and self.quiz_active:
+            self.quiz_active = False
+            self.quiz_visual.text = '[>] Running...\nWatch what happens!'
+            # 3秒後に非表示にするタイマーを設定
+            self.quiz_hide_timer = self.canvas.app.Timer(interval=3.0, connect=self._hide_quiz_text, iterations=1, start=True)
+            print("[>] Running simulation...")
+
+        elif event.text == 'e':
+            self.show_editor = not self.show_editor
+            self.editor_visual.visible = self.show_editor
+            if self.show_editor:
+                self._update_editor_panel()
+            print(f"📝 Editor: {'OPEN' if self.show_editor else 'CLOSED'}")
+
+        elif event.text in ['+', '=']:
+            self.zoom = max(0.2, self.zoom - 0.1)
+            self.view.camera.distance = 4.0 / self.zoom
+            print(f"🔍 Zoom: {self.zoom:.1f}x")
+
+        elif event.text == '-':
+            self.zoom = min(3.0, self.zoom + 0.1)
+            self.view.camera.distance = 4.0 / self.zoom
+            print(f"🔍 Zoom: {self.zoom:.1f}x")
+
         elif event.text == 'q':
             self.canvas.close()
             app.quit()
@@ -749,6 +917,10 @@ class NBodySimulator:
             self.config.n_bodies = int(event.text)
             self.periodic_mode = False
             self.restart()
+
+    def _hide_quiz_text(self, event):
+        """クイズテキストを非表示にする"""
+        self.quiz_visual.visible = False
 
     def run(self):
         """メインループ開始"""
