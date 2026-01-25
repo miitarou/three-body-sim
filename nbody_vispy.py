@@ -414,14 +414,8 @@ class NBodySimulator:
         # 座標軸を追加
         scene.visuals.XYZAxis(parent=self.view.scene)
 
-        # 境界ボックスを追加（ワイヤーフレーム）
-        r = self.config.display_range
-        self.boundary_box = scene.visuals.Box(
-            width=r*2, height=r*2, depth=r*2,
-            color=(0.3, 0.3, 0.3, 0.3),
-            edge_color=(0.5, 0.5, 0.5, 0.8),
-            parent=self.view.scene
-        )
+        # グリッド線を追加（境界ボックスのエッジとして）
+        self._create_grid_lines()
 
         # 天体用のMarkersビジュアル
         self.body_visual = scene.visuals.Markers(parent=self.view.scene)
@@ -739,6 +733,36 @@ class NBodySimulator:
         except Exception as e:
             print(f"[L] Error loading file: {e}")
             return False
+
+    def _create_grid_lines(self):
+        """グリッド線を作成（Matplotlibのpane風）"""
+        r = self.config.display_range
+        # 12本のエッジライン（立方体のワイヤーフレーム）
+        edges = [
+            # 底面
+            [[-r, -r, -r], [r, -r, -r]],
+            [[r, -r, -r], [r, r, -r]],
+            [[r, r, -r], [-r, r, -r]],
+            [[-r, r, -r], [-r, -r, -r]],
+            # 上面
+            [[-r, -r, r], [r, -r, r]],
+            [[r, -r, r], [r, r, r]],
+            [[r, r, r], [-r, r, r]],
+            [[-r, r, r], [-r, -r, r]],
+            # 垂直エッジ
+            [[-r, -r, -r], [-r, -r, r]],
+            [[r, -r, -r], [r, -r, r]],
+            [[r, r, -r], [r, r, r]],
+            [[-r, r, -r], [-r, r, r]],
+        ]
+
+        for edge in edges:
+            line = scene.visuals.Line(
+                pos=np.array(edge),
+                color=(0.5, 0.5, 0.5, 0.5),
+                width=1.0,
+                parent=self.view.scene
+            )
 
     def _initialize_ghost(self):
         """ゴーストを初期化（わずかにずらした初期条件）"""
