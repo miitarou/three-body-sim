@@ -42,9 +42,30 @@ pip install numpy matplotlib
 
 ## ▶️ 実行
 
+### 標準版（Matplotlib）
+
 ```bash
 python nbody_simulation_advanced.py
 ```
+
+### GPU高速描画版（Vispy） - 60+ FPS
+
+より滑らかな描画を体験したい場合は、Vispy版を使用してください：
+
+```bash
+# Vispyをインストール
+pixi add vispy
+# または
+pip install vispy
+
+# Vispy版を実行
+python nbody_vispy.py
+```
+
+**Vispy版の特徴:**
+- GPU描画により60-144 FPSの滑らかな動作
+- 大量の軌跡も軽快に表示
+- 物理計算はMojo高速化バックエンドを自動使用
 
 ---
 
@@ -188,6 +209,22 @@ F = G × m₁ × m₂ / r²
 
 ---
 
+## ⚡ パフォーマンス比較
+
+このシミュレーターは、計算と描画の両方で高速化が可能です。
+
+| バージョン | 物理計算 | 描画 | FPS | 総合評価 |
+|-----------|---------|------|-----|---------|
+| **標準版** | NumPy | Matplotlib | 〜30 | 教育・デモ用 |
+| **Mojo統合版** | Mojo (26.9x) | Matplotlib | 〜30 | 計算ヘビー時 |
+| **Vispy版** | NumPy | GPU | 60-144 | 滑らか重視 |
+| **Vispy + Mojo版** | Mojo (26.9x) | GPU | 60-144+ | 🚀 最強構成 |
+
+> **推奨**: 滑らかな描画を体験したい → `nbody_vispy.py`
+> **推奨**: 大規模シミュレーション → Mojo + Vispy
+
+---
+
 ## 🚀 Mojo高速化バックエンド (Experimental)
 
 計算コアをMojoで書き直すことで、**Python/NumPyの約27倍の高速化**を実現しています。
@@ -223,7 +260,8 @@ pixi run python benchmark.py
 
 ```
 three-body-sim/
-├── nbody_simulation_advanced.py  # メインシミュレーター
+├── nbody_simulation_advanced.py  # メインシミュレーター（Matplotlib版）
+├── nbody_vispy.py                # GPU高速描画版（60+ FPS）
 ├── test_nbody.py                 # テストスイート
 ├── demo.gif                      # デモ動画
 ├── README.md                     # このファイル

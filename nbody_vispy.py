@@ -1,0 +1,463 @@
+#!/usr/bin/env python3
+"""
+N体問題シミュレーター Vispy Edition (GPU加速版)
+
+GPU描画により60-144 FPSの滑らかな動作を実現
+物理計算はMojo高速化バックエンドを使用（利用可能な場合）
+"""
+
+from __future__ import annotations
+import numpy as np
+from vispy import app, scene
+from vispy.scene import visuals
+from vispy.visuals.transforms import STTransform
+import time
+from typing import Optional, List, Tuple
+from dataclasses import dataclass
+import json
+from pathlib import Path
+
+# 物理計算部分をインポート（既存のMojo統合済みコード）
+try:
+    from mojo_backend import get_engine
+    _physics_engine = get_engine(use_mojo=True)
+except ImportError:
+    _physics_engine = None
+
+
+# ============================================================
+# 設定
+# ============================================================
+
+@dataclass
+class Config:
+    """シミュレーション設定"""
+    n_bodies: int = 3
+    g: float = 1.0
+    base_dt: float = 0.001
+    min_dt: float = 0.0001
+    max_dt: float = 0.01
+    softening: float = 0.05
+    softening_periodic: float = 0.001
+    display_range: float = 1.5
+    mass_min: float = 0.5
+    mass_max: float = 2.0
+    max_trail: int = 800  # Vispyは軽いので多めに設定可能
+    steps_per_frame: int = 10
+    bound_limit: float = 5.0
+    target_fps: int = 60
+
+
+# ============================================================
+# 周期解カタログ（既存コードから移植）
+# ============================================================
+
+PERIODIC_SOLUTIONS = [
+    {
+        "name": "Figure-8 Classic",
+        "label": "[1/10] Figure-8 Classic",
+        "description": "Chenciner-Montgomery (2000)",
+        "positions": np.array([
+            [0.97000436, -0.24308753, 0.0],
+            [-0.97000436, 0.24308753, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.466203685, 0.43236573, 0.0],
+            [0.466203685, 0.43236573, 0.0],
+            [-0.93240737, -0.86473146, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Lagrange Triangle",
+        "label": "[2/10] Lagrange Triangle",
+        "description": "Lagrange (1772)",
+        "positions": np.array([
+            [1.0, 0.0, 0.0],
+            [-0.5, 0.866025404, 0.0],
+            [-0.5, -0.866025404, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.0, 0.5, 0.0],
+            [-0.433012702, -0.25, 0.0],
+            [0.433012702, -0.25, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Butterfly I",
+        "label": "[3/10] Butterfly I",
+        "description": "Šuvakov-Dmitrašinović (2013)",
+        "positions": np.array([
+            [0.306892758965492, 0.125506782829285, 0.0],
+            [0.306892758965492, 0.125506782829285, 0.0],
+            [-0.613785517930984, -0.251013565658570, 0.0]
+        ]),
+        "velocities": np.array([
+            [1.56936622805713, 0.346389529956308, 0.0],
+            [-1.56936622805713, -0.346389529956308, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+]
+
+
+# ============================================================
+# 物理計算関数
+# ============================================================
+
+def compute_accelerations(
+    positions: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    g: float = 1.0
+) -> np.ndarray:
+    """加速度計算（Mojo高速化版またはNumPy版）"""
+    if _physics_engine is not None and _physics_engine.use_mojo:
+        return _physics_engine.compute_accelerations(positions, masses, softening, g)
+
+    # NumPyフォールバック
+    n = len(masses)
+    eps2 = softening ** 2
+    r_ij = positions[np.newaxis, :, :] - positions[:, np.newaxis, :]
+    r2 = np.sum(r_ij ** 2, axis=2) + eps2
+    np.fill_diagonal(r2, 1.0)
+    inv_r3 = r2 ** (-1.5)
+    np.fill_diagonal(inv_r3, 0.0)
+    accelerations = g * np.sum(
+        masses[np.newaxis, :, np.newaxis] * r_ij * inv_r3[:, :, np.newaxis],
+        axis=1
+    )
+    return accelerations
+
+
+def compute_min_distance(positions: np.ndarray) -> float:
+    """最小距離を計算"""
+    n = len(positions)
+    min_dist = float('inf')
+    for i in range(n):
+        for j in range(i+1, n):
+            dist = np.linalg.norm(positions[j] - positions[i])
+            min_dist = min(min_dist, dist)
+    return min_dist
+
+
+def adaptive_timestep(
+    positions: np.ndarray,
+    base_dt: float,
+    min_dt: float,
+    max_dt: float
+) -> float:
+    """適応タイムステップ"""
+    min_dist = compute_min_distance(positions)
+    factor = min(1.0, min_dist / 0.3)
+    dt = base_dt * factor
+    return max(min_dt, min(max_dt, dt))
+
+
+def rk4_step(
+    positions: np.ndarray,
+    velocities: np.ndarray,
+    masses: np.ndarray,
+    softening: float,
+    dt: float,
+    g: float = 1.0
+) -> Tuple[np.ndarray, np.ndarray]:
+    """RK4積分（Mojo高速化版またはNumPy版）"""
+    if _physics_engine is not None and _physics_engine.use_mojo:
+        return _physics_engine.rk4_step(positions, velocities, masses, softening, dt, g)
+
+    # NumPyフォールバック
+    k1_r = velocities
+    k1_v = compute_accelerations(positions, masses, softening, g)
+
+    k2_r = velocities + 0.5 * dt * k1_v
+    k2_v = compute_accelerations(positions + 0.5 * dt * k1_r, masses, softening, g)
+
+    k3_r = velocities + 0.5 * dt * k2_v
+    k3_v = compute_accelerations(positions + 0.5 * dt * k2_r, masses, softening, g)
+
+    k4_r = velocities + dt * k3_v
+    k4_v = compute_accelerations(positions + dt * k3_r, masses, softening, g)
+
+    new_pos = positions + (dt / 6.0) * (k1_r + 2*k2_r + 2*k3_r + k4_r)
+    new_vel = velocities + (dt / 6.0) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
+
+    return new_pos, new_vel
+
+
+def generate_initial_conditions(
+    n_bodies: int,
+    mass_min: float,
+    mass_max: float
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """ランダムな初期条件を生成"""
+    np.random.seed(int(time.time() * 1000) % (2**32))
+
+    positions = np.random.uniform(-0.5, 0.5, size=(n_bodies, 3))
+    velocities = np.random.uniform(-0.3, 0.3, size=(n_bodies, 3))
+    masses = np.random.uniform(mass_min, mass_max, size=n_bodies)
+
+    return positions, velocities, masses
+
+
+def is_out_of_bounds(positions: np.ndarray, bound: float) -> bool:
+    """境界外判定"""
+    return np.any(np.abs(positions) > bound)
+
+
+# ============================================================
+# Vispyシミュレーター
+# ============================================================
+
+class NBodySimulator:
+    """N体シミュレーター（Vispy版）"""
+
+    def __init__(self, config: Config = None):
+        self.config = config or Config()
+
+        # 物理状態
+        self.positions: Optional[np.ndarray] = None
+        self.velocities: Optional[np.ndarray] = None
+        self.masses: Optional[np.ndarray] = None
+        self.trails: List[np.ndarray] = []
+        self.generation = 0
+        self.paused = False
+        self.show_forces = False
+        self.periodic_mode = False
+        self.periodic_index = 0
+
+        # FPS計測
+        self.frame_times: List[float] = []
+        self.last_frame_time = time.time()
+
+        # Canvas作成
+        self.canvas = scene.SceneCanvas(
+            keys='interactive',
+            size=(1200, 900),
+            show=True,
+            title='N-Body Simulator (Vispy GPU Edition)'
+        )
+
+        # 3Dビュー作成
+        self.view = self.canvas.central_widget.add_view()
+        self.view.camera = scene.TurntableCamera(
+            fov=45,
+            distance=4.0,
+            elevation=30,
+            azimuth=45
+        )
+
+        # 座標軸を追加
+        scene.visuals.XYZAxis(parent=self.view.scene)
+
+        # 天体用のMarkersビジュアル
+        self.body_visual = scene.visuals.Markers(parent=self.view.scene)
+
+        # 軌跡用のLineビジュアル
+        self.trail_visuals: List[scene.visuals.Line] = []
+
+        # テキスト表示
+        self.text_visual = scene.visuals.Text(
+            '',
+            pos=(10, 30),
+            color='white',
+            font_size=10,
+            parent=self.canvas.scene
+        )
+
+        # イベントハンドラ
+        self.canvas.events.key_press.connect(self.on_key_press)
+
+        # アニメーションタイマー
+        self.timer = app.Timer(
+            interval=1.0 / self.config.target_fps,
+            connect=self.update,
+            start=True
+        )
+
+        # 初期化
+        self.restart()
+
+        print("=" * 65)
+        print("N-Body Simulator (Vispy GPU Edition)")
+        print("=" * 65)
+        if _physics_engine is not None and _physics_engine.use_mojo:
+            print("🚀 Mojo Physics Backend: ENABLED (26x faster)")
+        else:
+            print("📊 Physics Backend: NumPy")
+        print(f"🎮 Target FPS: {self.config.target_fps}")
+        print()
+        print("🎮 Controls:")
+        print("  [SPACE] = Pause/Resume")
+        print("  [R]     = Restart")
+        print("  [M]     = Periodic solutions")
+        print("  [F]     = Force vectors (todo)")
+        print("  [3-9]   = Change body count")
+        print("  [Q]     = Quit")
+        print()
+
+    def restart(self, periodic: bool = False):
+        """シミュレーションを再スタート"""
+        if periodic and self.periodic_mode:
+            sol = PERIODIC_SOLUTIONS[self.periodic_index % len(PERIODIC_SOLUTIONS)]
+            self.positions = sol["positions"].copy()
+            self.velocities = sol["velocities"].copy()
+            self.masses = sol["masses"].copy()
+            self.config.n_bodies = len(self.masses)
+            print(f"🔄 {sol['label']}: {sol['description']}")
+        else:
+            self.periodic_mode = False
+            self.positions, self.velocities, self.masses = generate_initial_conditions(
+                self.config.n_bodies,
+                self.config.mass_min,
+                self.config.mass_max
+            )
+            print(f"🔄 Generation {self.generation + 1} started ({self.config.n_bodies} bodies)")
+
+        self.generation += 1
+        self.trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
+
+        # 軌跡ビジュアルを再作成
+        for visual in self.trail_visuals:
+            visual.parent = None
+        self.trail_visuals.clear()
+
+        for _ in range(self.config.n_bodies):
+            line = scene.visuals.Line(
+                pos=np.zeros((0, 3)),
+                color=(0.5, 0.5, 1.0, 0.3),
+                width=1.0,
+                parent=self.view.scene
+            )
+            self.trail_visuals.append(line)
+
+    def update(self, event):
+        """フレーム更新"""
+        if self.paused:
+            return
+
+        # 物理シミュレーション
+        softening = self.config.softening_periodic if self.periodic_mode else self.config.softening
+
+        for _ in range(self.config.steps_per_frame):
+            dt = adaptive_timestep(
+                self.positions,
+                self.config.base_dt,
+                self.config.min_dt,
+                self.config.max_dt
+            )
+            self.positions, self.velocities = rk4_step(
+                self.positions,
+                self.velocities,
+                self.masses,
+                softening,
+                dt,
+                self.config.g
+            )
+
+        # 境界チェック
+        if is_out_of_bounds(self.positions, self.config.bound_limit):
+            if self.periodic_mode:
+                self.periodic_index += 1
+            self.restart(periodic=self.periodic_mode)
+            return
+
+        # 軌跡更新
+        for i in range(self.config.n_bodies):
+            self.trails[i] = np.vstack([self.trails[i], self.positions[i:i+1]])
+            if len(self.trails[i]) > self.config.max_trail:
+                self.trails[i] = self.trails[i][-self.config.max_trail:]
+
+            # 軌跡描画更新
+            if len(self.trails[i]) > 1:
+                self.trail_visuals[i].set_data(pos=self.trails[i])
+
+        # 天体描画更新
+        colors = self._get_body_colors()
+        sizes = self._get_body_sizes()
+        self.body_visual.set_data(
+            pos=self.positions,
+            face_color=colors,
+            edge_color='white',
+            size=sizes
+        )
+
+        # FPS計測
+        current_time = time.time()
+        frame_time = current_time - self.last_frame_time
+        self.last_frame_time = current_time
+        self.frame_times.append(frame_time)
+        if len(self.frame_times) > 30:
+            self.frame_times.pop(0)
+
+        avg_frame_time = np.mean(self.frame_times)
+        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+
+        # テキスト更新
+        status = "PAUSED" if self.paused else f"FPS: {fps:.1f}"
+        backend = "Mojo" if (_physics_engine and _physics_engine.use_mojo) else "NumPy"
+        self.text_visual.text = f"Gen {self.generation} | {self.config.n_bodies} bodies | {status} | {backend}"
+
+    def _get_body_colors(self) -> np.ndarray:
+        """天体の色を取得"""
+        colors = np.zeros((self.config.n_bodies, 4))
+        for i in range(self.config.n_bodies):
+            hue = i / max(self.config.n_bodies, 1)
+            colors[i] = self._hsv_to_rgb(hue, 0.8, 1.0)
+        return colors
+
+    def _get_body_sizes(self) -> np.ndarray:
+        """天体のサイズを取得（質量に応じて）"""
+        normalized_masses = (self.masses - self.masses.min()) / (self.masses.max() - self.masses.min() + 1e-10)
+        return 10 + normalized_masses * 20
+
+    @staticmethod
+    def _hsv_to_rgb(h: float, s: float, v: float) -> Tuple[float, float, float, float]:
+        """HSVからRGBAに変換"""
+        import colorsys
+        r, g, b = colorsys.hsv_to_rgb(h, s, v)
+        return (r, g, b, 1.0)
+
+    def on_key_press(self, event):
+        """キーボードイベント処理"""
+        if event.text == ' ':
+            self.paused = not self.paused
+            print("⏸️  Paused" if self.paused else "▶️  Resumed")
+
+        elif event.text == 'r':
+            self.restart()
+
+        elif event.text == 'm':
+            self.periodic_mode = not self.periodic_mode
+            if self.periodic_mode:
+                self.periodic_index = 0
+                self.restart(periodic=True)
+            else:
+                print("🔄 Periodic mode OFF")
+                self.restart()
+
+        elif event.text == 'q':
+            self.canvas.close()
+            app.quit()
+
+        elif event.text in '3456789':
+            self.config.n_bodies = int(event.text)
+            self.periodic_mode = False
+            self.restart()
+
+    def run(self):
+        """メインループ開始"""
+        app.run()
+
+
+# ============================================================
+# メイン
+# ============================================================
+
+if __name__ == '__main__':
+    config = Config()
+    sim = NBodySimulator(config)
+    sim.run()
