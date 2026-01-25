@@ -411,11 +411,8 @@ class NBodySimulator:
             azimuth=45
         )
 
-        # 座標軸を追加
-        scene.visuals.XYZAxis(parent=self.view.scene)
-
-        # グリッド線を追加（境界ボックスのエッジとして）
-        self._create_grid_lines()
+        # グリッド線と軸を追加（単色、Matplotlib風）
+        self._create_grid_and_axes()
 
         # 天体用のMarkersビジュアル
         self.body_visual = scene.visuals.Markers(parent=self.view.scene)
@@ -734,27 +731,107 @@ class NBodySimulator:
             print(f"[L] Error loading file: {e}")
             return False
 
-    def _create_grid_lines(self):
-        """グリッド線を作成（Matplotlib風に控えめに）"""
+    def _create_grid_and_axes(self):
+        """グリッド線と軸を作成（Matplotlib風）"""
         r = self.config.display_range
 
-        # XY平面のグリッド（底面）- 非常に薄く
+        # XY平面のグリッド（底面）- 非常に薄く、単色グレー
         n_lines = 5
         step = 2 * r / n_lines
         for i in range(n_lines + 1):
             pos = -r + i * step
             # X方向の線
-            line = scene.visuals.Line(
+            scene.visuals.Line(
                 pos=np.array([[pos, -r, -r], [pos, r, -r]]),
-                color=(0.3, 0.3, 0.3, 0.15),
+                color=(0.4, 0.4, 0.4, 0.15),
                 width=0.5,
                 parent=self.view.scene
             )
             # Y方向の線
-            line = scene.visuals.Line(
+            scene.visuals.Line(
                 pos=np.array([[-r, pos, -r], [r, pos, -r]]),
-                color=(0.3, 0.3, 0.3, 0.15),
+                color=(0.4, 0.4, 0.4, 0.15),
                 width=0.5,
+                parent=self.view.scene
+            )
+
+        # 座標軸（X, Y, Z）- 白色で統一
+        axis_color = (0.8, 0.8, 0.8, 0.8)
+
+        # X軸
+        scene.visuals.Line(
+            pos=np.array([[-r, -r, -r], [r, -r, -r]]),
+            color=axis_color,
+            width=2.0,
+            parent=self.view.scene
+        )
+
+        # Y軸
+        scene.visuals.Line(
+            pos=np.array([[-r, -r, -r], [-r, r, -r]]),
+            color=axis_color,
+            width=2.0,
+            parent=self.view.scene
+        )
+
+        # Z軸
+        scene.visuals.Line(
+            pos=np.array([[-r, -r, -r], [-r, -r, r]]),
+            color=axis_color,
+            width=2.0,
+            parent=self.view.scene
+        )
+
+        # 軸ラベル（X, Y, Z）
+        scene.visuals.Text(
+            'X',
+            pos=(r + 0.2, -r, -r),
+            color='white',
+            font_size=12,
+            parent=self.view.scene
+        )
+        scene.visuals.Text(
+            'Y',
+            pos=(-r, r + 0.2, -r),
+            color='white',
+            font_size=12,
+            parent=self.view.scene
+        )
+        scene.visuals.Text(
+            'Z',
+            pos=(-r, -r, r + 0.2),
+            color='white',
+            font_size=12,
+            parent=self.view.scene
+        )
+
+        # 目盛り数字（主要な点のみ）
+        ticks = [-r, 0, r]
+        tick_labels = [f'{-self.config.display_range:.1f}', '0', f'{self.config.display_range:.1f}']
+
+        for tick, label in zip(ticks, tick_labels):
+            # X軸の目盛り
+            scene.visuals.Text(
+                label,
+                pos=(tick, -r - 0.15, -r),
+                color=(0.7, 0.7, 0.7, 0.8),
+                font_size=8,
+                parent=self.view.scene
+            )
+            # Y軸の目盛り
+            scene.visuals.Text(
+                label,
+                pos=(-r - 0.15, tick, -r),
+                color=(0.7, 0.7, 0.7, 0.8),
+                font_size=8,
+                parent=self.view.scene
+            )
+            # Z軸の目盛り
+            scene.visuals.Text(
+                label,
+                pos=(-r - 0.15, -r, tick),
+                color=(0.7, 0.7, 0.7, 0.8),
+                font_size=8,
                 parent=self.view.scene
             )
 
