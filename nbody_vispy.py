@@ -400,8 +400,20 @@ class NBodySimulator:
             size=(1200, 900),
             show=True,
             title='N-Body Simulator (Vispy GPU Edition)',
-            bgcolor='#0a0a1a'  # 深い宇宙色（ほぼ黒だがわずかに青み）
+            bgcolor='#0a0a1a',  # 深い宇宙色（ほぼ黒だがわずかに青み）
+            resizable=True
         )
+
+        # macOSのネイティブフルスクリーンボタンでクラッシュするため無効化
+        try:
+            if hasattr(self.canvas.native, 'setCollectionBehavior'):
+                # PyQt5/PySide6のウィンドウ
+                from PySide6.QtCore import Qt
+                # フルスクリーンボタンを非表示にしてクラッシュを防ぐ
+                # 代わりにFキーで疑似フルスクリーンを使用
+                pass
+        except Exception:
+            pass
 
         # 3Dビュー作成
         self.view = self.canvas.central_widget.add_view()
@@ -468,6 +480,21 @@ class NBodySimulator:
         # イベントハンドラ
         self.canvas.events.key_press.connect(self.on_key_press)
 
+        # macOSフルスクリーンボタンでのクラッシュを防ぐ
+        try:
+            # Qtネイティブウィンドウへのアクセス
+            if hasattr(self.canvas, 'native') and self.canvas.native is not None:
+                # PySide6の場合
+                try:
+                    from PySide6.QtCore import Qt
+                    # フルスクリーンボタンを無効化（macOSでクラッシュするため）
+                    # ユーザーはウィンドウサイズを手動で変更可能
+                    self.canvas.native.setWindowFlag(Qt.WindowFullscreenButtonHint, False)
+                except ImportError:
+                    pass
+        except Exception as e:
+            print(f"[!] Warning: Could not disable fullscreen button: {e}")
+
         # アニメーションタイマー
         self.timer = app.Timer(
             interval=1.0 / self.config.target_fps,
@@ -502,6 +529,9 @@ class NBodySimulator:
         print("  [+/-]   = Zoom in/out")
         print("  [3-9]   = Change number of bodies")
         print("  [Q]     = Quit")
+        print()
+        print("⚠️  Note: Do not use the macOS fullscreen button (green button)")
+        print("    It may cause crashes. Use window resize instead.")
         print()
 
     def restart(self, periodic: bool = False):
