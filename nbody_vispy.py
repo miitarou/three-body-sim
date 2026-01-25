@@ -488,24 +488,33 @@ class NBodySimulator:
                 native = self.canvas.native
                 if native is not None:
                     try:
-                        # PySide6/PyQt6でフルスクリーンボタンを無効化
-                        from PySide6.QtCore import Qt
+                        # PySide6またはPyQt5でフルスクリーンボタンを無効化
+                        Qt = None
+                        try:
+                            from PySide6.QtCore import Qt
+                        except ImportError:
+                            try:
+                                from PyQt5.QtCore import Qt
+                            except ImportError:
+                                pass
 
-                        # 現在のフラグを取得
-                        current_flags = native.windowFlags()
+                        if Qt is not None:
+                            # 現在のフラグを取得
+                            current_flags = native.windowFlags()
 
-                        # フルスクリーンボタンヒントを除外
-                        # WindowType部分は保持し、ヒントのみ変更
-                        new_flags = current_flags & ~Qt.WindowFullscreenButtonHint
+                            # フルスクリーンボタンヒントを除外
+                            new_flags = current_flags & ~Qt.WindowFullscreenButtonHint
 
-                        # フラグを設定（ウィンドウを一時的に隠して再表示）
-                        was_visible = native.isVisible()
-                        native.setWindowFlags(new_flags)
-                        if was_visible:
-                            native.show()
+                            # フラグを設定
+                            was_visible = native.isVisible()
+                            native.setWindowFlags(new_flags)
+                            if was_visible:
+                                native.show()
 
-                        fullscreen_disabled = True
-                        print("[✓] Disabled macOS fullscreen button")
+                            fullscreen_disabled = True
+                            print("[✓] Disabled macOS fullscreen button")
+                        else:
+                            print("[!] No Qt module found (PySide6/PyQt5)")
                     except Exception as e:
                         print(f"[!] Could not disable fullscreen button: {e}")
         except Exception as e:
