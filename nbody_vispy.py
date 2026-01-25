@@ -800,14 +800,14 @@ class NBodySimulator:
             scene.visuals.Line(
                 pos=np.array([[-r, pos, -r], [-r, pos, r]]),
                 color=(0.5, 0.5, 0.5, 0.25),
-                width=1.0,
+                width=1.5,
                 parent=self.view.scene
             )
             # Z方向の線
             scene.visuals.Line(
                 pos=np.array([[-r, -r, pos], [-r, r, pos]]),
                 color=(0.5, 0.5, 0.5, 0.25),
-                width=1.0,
+                width=1.5,
                 parent=self.view.scene
             )
 
@@ -818,14 +818,14 @@ class NBodySimulator:
             scene.visuals.Line(
                 pos=np.array([[pos, -r, -r], [pos, -r, r]]),
                 color=(0.5, 0.5, 0.5, 0.25),
-                width=1.0,
+                width=1.5,
                 parent=self.view.scene
             )
             # Z方向の線
             scene.visuals.Line(
                 pos=np.array([[-r, -r, pos], [r, -r, pos]]),
                 color=(0.5, 0.5, 0.5, 0.25),
-                width=1.0,
+                width=1.5,
                 parent=self.view.scene
             )
 
@@ -892,7 +892,7 @@ class NBodySimulator:
                 label,
                 pos=(tick, -r - 0.3, -r),
                 color=(1.0, 1.0, 1.0),
-                font_size=14,
+                font_size=20,
                 bold=True,
                 parent=self.view.scene
             )
@@ -901,7 +901,7 @@ class NBodySimulator:
                 label,
                 pos=(-r - 0.3, tick, -r),
                 color=(1.0, 1.0, 1.0),
-                font_size=14,
+                font_size=20,
                 bold=True,
                 parent=self.view.scene
             )
@@ -910,7 +910,7 @@ class NBodySimulator:
                 label,
                 pos=(-r - 0.3, -r, tick),
                 color=(1.0, 1.0, 1.0),
-                font_size=14,
+                font_size=20,
                 bold=True,
                 parent=self.view.scene
             )
@@ -962,7 +962,7 @@ class NBodySimulator:
         if self.paused or self.quiz_active:
             return
 
-        # 物理シミュレーション
+        # 物理シミュレーション（0.7倍速）
         softening = self.config.softening_periodic if self.periodic_mode else self.config.softening
 
         for _ in range(self.config.steps_per_frame):
@@ -972,6 +972,8 @@ class NBodySimulator:
                 self.config.min_dt,
                 self.config.max_dt
             )
+            # シミュレーション速度を0.7倍に調整
+            dt *= 0.7
             self.positions, self.velocities = rk4_step(
                 self.positions,
                 self.velocities,
@@ -989,6 +991,8 @@ class NBodySimulator:
                     self.config.min_dt,
                     self.config.max_dt
                 )
+                # シミュレーション速度を0.7倍に調整
+                ghost_dt *= 0.7
                 self.ghost_positions, self.ghost_velocities = rk4_step(
                     self.ghost_positions,
                     self.ghost_velocities,
@@ -1066,9 +1070,9 @@ class NBodySimulator:
             for visual in self.force_visuals:
                 visual.visible = False
 
-        # 自動回転
+        # 自動回転（0.7倍速）
         if self.auto_rotate and not self.paused:
-            self.rotation_angle += 0.5
+            self.rotation_angle += 0.35
             self.view.camera.azimuth = self.rotation_angle
 
         # FPS計測
