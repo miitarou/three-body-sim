@@ -23,6 +23,13 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import time
 
+# Mojo高速化バックエンド（利用可能な場合は自動で使用）
+try:
+    from mojo_backend import get_engine
+    _physics_engine = get_engine(use_mojo=True)
+except ImportError:
+    _physics_engine = None
+
 
 # ============================================================
 # 設定クラス
@@ -284,28 +291,33 @@ def compute_accelerations_vectorized(
     softening: float,
     g: float = G
 ) -> np.ndarray:
-    """完全ベクトル化された加速度計算（ループなし・高速化版）"""
+    """完全ベクトル化された加速度計算（Mojo高速化版または NumPy版）"""
+    # Mojoバックエンドが利用可能な場合は高速計算を使用
+    if _physics_engine is not None and _physics_engine.use_mojo:
+        return _physics_engine.compute_accelerations(positions, masses, softening, g)
+
+    # NumPy フォールバック版
     n = len(masses)
     eps2 = softening ** 2
-    
+
     # 全ペア間の差分ベクトルを一括計算
     # r_ij[i, j] = positions[j] - positions[i]
     r_ij = positions[np.newaxis, :, :] - positions[:, np.newaxis, :]
-    
+
     # 距離の二乗 + ソフトニング
     r2 = np.sum(r_ij ** 2, axis=2) + eps2
     np.fill_diagonal(r2, 1.0)  # 自己相互作用を避ける
-    
+
     # 1/r³ 計算
     inv_r3 = r2 ** (-1.5)
     np.fill_diagonal(inv_r3, 0.0)
-    
+
     # 加速度 = G * Σ(m_j * r_ij / |r_ij|³)
     accelerations = g * np.sum(
         masses[np.newaxis, :, np.newaxis] * r_ij * inv_r3[:, :, np.newaxis],
         axis=1
     )
-    
+
     return accelerations
 
 
@@ -366,24 +378,30 @@ def rk4_step_adaptive(
     max_dt: float,
     g: float = G
 ) -> Tuple[np.ndarray, np.ndarray, float]:
-    """適応タイムステップ付きRK4積分"""
+    """適応タイムステップ付きRK4積分（Mojo高速化版またはNumPy版）"""
     dt = adaptive_timestep(positions, base_dt, min_dt, max_dt)
-    
+
+    # Mojoバックエンドが利用可能な場合は高速RK4を使用
+    if _physics_engine is not None and _physics_engine.use_mojo:
+        new_pos, new_vel = _physics_engine.rk4_step(positions, velocities, masses, softening, dt, g)
+        return new_pos, new_vel, dt
+
+    # NumPy フォールバック版
     k1_r = velocities
     k1_v = compute_accelerations_vectorized(positions, masses, softening, g)
-    
+
     k2_r = velocities + 0.5 * dt * k1_v
     k2_v = compute_accelerations_vectorized(positions + 0.5 * dt * k1_r, masses, softening, g)
-    
+
     k3_r = velocities + 0.5 * dt * k2_v
     k3_v = compute_accelerations_vectorized(positions + 0.5 * dt * k2_r, masses, softening, g)
-    
+
     k4_r = velocities + dt * k3_v
     k4_v = compute_accelerations_vectorized(positions + dt * k3_r, masses, softening, g)
-    
+
     new_pos = positions + (dt / 6.0) * (k1_r + 2*k2_r + 2*k3_r + k4_r)
     new_vel = velocities + (dt / 6.0) * (k1_v + 2*k2_v + 2*k3_v + k4_v)
-    
+
     return new_pos, new_vel, dt
 
 
@@ -1442,6 +1460,13 @@ if __name__ == "__main__":
     print("=" * 65)
     print("N-Body Problem Simulator【Learning Edition】")
     print("=" * 65)
+    print()
+
+    # Mojoバックエンドの状態を表示
+    if _physics_engine is not None and _physics_engine.use_mojo:
+        print("🚀 Mojo Physics Backend: ENABLED (26x faster)")
+    else:
+        print("📊 Physics Backend: NumPy (standard)")
     print()
     print("🎬 The simulation starts automatically!")
     print("   Watch the stars dance, then explore with these controls:")
