@@ -10,12 +10,10 @@ from __future__ import annotations
 import numpy as np
 from vispy import app, scene
 from vispy.scene import visuals
-from vispy.visuals.transforms import STTransform
 import time
+import colorsys
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
-import json
-from pathlib import Path
 
 # 物理計算部分をインポート（既存のMojo統合済みコード）
 try:
@@ -49,10 +47,11 @@ class Config:
 
 
 # ============================================================
-# 周期解カタログ（既存コードから移植）
+# 周期解カタログ（10種類の有名な周期解）
 # ============================================================
 
 PERIODIC_SOLUTIONS = [
+    # ⭐ おすすめ 1: 数学史上最も有名な三体周期解
     {
         "name": "Figure-8 Classic",
         "label": "[1/10] Figure-8 Classic",
@@ -69,35 +68,149 @@ PERIODIC_SOLUTIONS = [
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
+    # ⭐ おすすめ 2: 歴史的価値最高（1772年発見）
     {
         "name": "Lagrange Triangle",
         "label": "[2/10] Lagrange Triangle",
         "description": "Lagrange (1772)",
         "positions": np.array([
-            [1.0, 0.0, 0.0],
-            [-0.5, 0.866025404, 0.0],
-            [-0.5, -0.866025404, 0.0]
+            [0.0, 1.0, 0.0],
+            [np.sqrt(3)/2, -0.5, 0.0],
+            [-np.sqrt(3)/2, -0.5, 0.0]
         ]),
         "velocities": np.array([
-            [0.0, 0.5, 0.0],
-            [-0.433012702, -0.25, 0.0],
-            [0.433012702, -0.25, 0.0]
+            [0.5, 0.0, 0.0],
+            [-0.25, -np.sqrt(3)/4, 0.0],
+            [-0.25, np.sqrt(3)/4, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    # ⭐ おすすめ 3: 美しい蝶の軌道
+    {
+        "name": "Butterfly I",
+        "label": "[3/10] Butterfly I",
+        "description": "Suvakov-Dmitrasinovic I.8.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.412103, 0.283384, 0.0],
+            [0.412103, 0.283384, 0.0],
+            [-0.824206, -0.566768, 0.0]
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
     {
-        "name": "Butterfly I",
-        "label": "[3/10] Butterfly I",
-        "description": "Šuvakov-Dmitrašinović (2013)",
+        "name": "Figure-8 (I.2.A)",
+        "label": "[4/10] Figure-8 (I.2.A)",
+        "description": "Suvakov-Dmitrasinovic (2013)",
         "positions": np.array([
-            [0.306892758965492, 0.125506782829285, 0.0],
-            [0.306892758965492, 0.125506782829285, 0.0],
-            [-0.613785517930984, -0.251013565658570, 0.0]
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
         ]),
         "velocities": np.array([
-            [1.56936622805713, 0.346389529956308, 0.0],
-            [-1.56936622805713, -0.346389529956308, 0.0],
+            [0.306893, 0.125507, 0.0],
+            [0.306893, 0.125507, 0.0],
+            [-0.613786, -0.251014, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Moth I",
+        "label": "[5/10] Moth I",
+        "description": "Suvakov-Dmitrasinovic I.B.1",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
             [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.46444, 0.39606, 0.0],
+            [0.46444, 0.39606, 0.0],
+            [-0.92888, -0.79212, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang Ia",
+        "label": "[6/10] Yin-Yang Ia",
+        "description": "Suvakov-Dmitrasinovic II.C.2a",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.51394, 0.30474, 0.0],
+            [0.51394, 0.30474, 0.0],
+            [-1.02788, -0.60948, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang Ib",
+        "label": "[7/10] Yin-Yang Ib",
+        "description": "Suvakov-Dmitrasinovic II.C.2b",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.28270, 0.32721, 0.0],
+            [0.28270, 0.32721, 0.0],
+            [-0.56540, -0.65442, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang II",
+        "label": "[8/10] Yin-Yang II",
+        "description": "Suvakov-Dmitrasinovic II.C.3a",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.41682, 0.33033, 0.0],
+            [0.41682, 0.33033, 0.0],
+            [-0.83364, -0.66066, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yin-Yang III",
+        "label": "[9/10] Yin-Yang III",
+        "description": "Suvakov-Dmitrasinovic III.9.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.513150, 0.289437, 0.0],
+            [0.513150, 0.289437, 0.0],
+            [-1.02630, -0.578874, 0.0]
+        ]),
+        "masses": np.array([1.0, 1.0, 1.0])
+    },
+    {
+        "name": "Yarn",
+        "label": "[10/10] Yarn",
+        "description": "Suvakov-Dmitrasinovic III.13.A",
+        "positions": np.array([
+            [-1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0]
+        ]),
+        "velocities": np.array([
+            [0.416444, 0.336397, 0.0],
+            [0.416444, 0.336397, 0.0],
+            [-0.832888, -0.672794, 0.0]
         ]),
         "masses": np.array([1.0, 1.0, 1.0])
     },
@@ -225,7 +338,6 @@ class NBodySimulator:
         self.trails: List[np.ndarray] = []
         self.generation = 0
         self.paused = False
-        self.show_forces = False
         self.periodic_mode = False
         self.periodic_index = 0
 
@@ -292,10 +404,9 @@ class NBodySimulator:
         print()
         print("🎮 Controls:")
         print("  [SPACE] = Pause/Resume")
-        print("  [R]     = Restart")
-        print("  [M]     = Periodic solutions")
-        print("  [F]     = Force vectors (todo)")
-        print("  [3-9]   = Change body count")
+        print("  [R]     = Restart with new conditions")
+        print("  [M]     = Cycle through periodic solutions (10 types)")
+        print("  [3-9]   = Change number of bodies")
         print("  [Q]     = Quit")
         print()
 
@@ -320,16 +431,17 @@ class NBodySimulator:
         self.generation += 1
         self.trails = [np.zeros((0, 3)) for _ in range(self.config.n_bodies)]
 
-        # 軌跡ビジュアルを再作成
+        # 軌跡ビジュアルを再作成（天体ごとに色分け）
         for visual in self.trail_visuals:
             visual.parent = None
         self.trail_visuals.clear()
 
-        for _ in range(self.config.n_bodies):
+        for i in range(self.config.n_bodies):
+            color = self._get_trail_color(i)
             line = scene.visuals.Line(
                 pos=np.zeros((0, 3)),
-                color=(0.5, 0.5, 1.0, 0.3),
-                width=1.0,
+                color=color,
+                width=1.5,
                 parent=self.view.scene
             )
             self.trail_visuals.append(line)
@@ -414,10 +526,15 @@ class NBodySimulator:
         normalized_masses = (self.masses - self.masses.min()) / (self.masses.max() - self.masses.min() + 1e-10)
         return 10 + normalized_masses * 20
 
+    def _get_trail_color(self, index: int) -> Tuple[float, float, float, float]:
+        """軌跡の色を取得（天体ごとに異なる色）"""
+        hue = index / max(self.config.n_bodies, 1)
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
+        return (r, g, b, 0.5)
+
     @staticmethod
     def _hsv_to_rgb(h: float, s: float, v: float) -> Tuple[float, float, float, float]:
         """HSVからRGBAに変換"""
-        import colorsys
         r, g, b = colorsys.hsv_to_rgb(h, s, v)
         return (r, g, b, 1.0)
 
