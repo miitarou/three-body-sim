@@ -481,19 +481,39 @@ class NBodySimulator:
         self.canvas.events.key_press.connect(self.on_key_press)
 
         # macOSフルスクリーンボタンでのクラッシュを防ぐ
+        fullscreen_disabled = False
         try:
-            # Qtネイティブウィンドウへのアクセス
-            if hasattr(self.canvas, 'native') and self.canvas.native is not None:
-                # PySide6の場合
-                try:
-                    from PySide6.QtCore import Qt
-                    # フルスクリーンボタンを無効化（macOSでクラッシュするため）
-                    # ユーザーはウィンドウサイズを手動で変更可能
-                    self.canvas.native.setWindowFlag(Qt.WindowFullscreenButtonHint, False)
-                except ImportError:
-                    pass
+            import platform
+            if platform.system() == 'Darwin' and hasattr(self.canvas, 'native'):
+                native = self.canvas.native
+                if native is not None:
+                    try:
+                        # PySide6/PyQt6でフルスクリーンボタンを無効化
+                        from PySide6.QtCore import Qt
+
+                        # 現在のフラグを取得
+                        current_flags = native.windowFlags()
+
+                        # フルスクリーンボタンヒントを除外
+                        # WindowType部分は保持し、ヒントのみ変更
+                        new_flags = current_flags & ~Qt.WindowFullscreenButtonHint
+
+                        # フラグを設定（ウィンドウを一時的に隠して再表示）
+                        was_visible = native.isVisible()
+                        native.setWindowFlags(new_flags)
+                        if was_visible:
+                            native.show()
+
+                        fullscreen_disabled = True
+                        print("[✓] Disabled macOS fullscreen button")
+                    except Exception as e:
+                        print(f"[!] Could not disable fullscreen button: {e}")
         except Exception as e:
-            print(f"[!] Warning: Could not disable fullscreen button: {e}")
+            print(f"[!] Warning: {e}")
+
+        if not fullscreen_disabled:
+            print("[!] WARNING: macOS fullscreen button may cause crashes!")
+            print("    Please resize window manually instead of using fullscreen.")
 
         # アニメーションタイマー
         self.timer = app.Timer(
