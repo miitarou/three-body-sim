@@ -482,6 +482,7 @@ class NBodySimulator:
         self.canvas.events.key_press.connect(self.on_key_press)
 
         # macOSフルスクリーンボタンでのクラッシュを防ぐ
+        # ボタンを非表示にするのではなく、フルスクリーン遷移をブロックする
         fullscreen_disabled = False
         try:
             import platform
@@ -489,34 +490,43 @@ class NBodySimulator:
                 native = self.canvas.native
                 if native is not None:
                     try:
-                        # PySide6またはPyQt5でフルスクリーンボタンを無効化
+                        # PySide6またはPyQt5でイベントフィルターをインストール
                         Qt = None
+                        QtCore = None
                         try:
-                            from PySide6.QtCore import Qt
+                            from PySide6.QtCore import Qt, QEvent, QObject
+                            from PySide6 import QtCore
                         except ImportError:
                             try:
-                                from PyQt5.QtCore import Qt
+                                from PyQt5.QtCore import Qt, QEvent, QObject
+                                from PyQt5 import QtCore
                             except ImportError:
                                 pass
 
                         if Qt is not None:
-                            # 現在のフラグを取得
-                            current_flags = native.windowFlags()
+                            # フルスクリーンイベントをブロックするフィルター
+                            class FullscreenBlocker(QObject):
+                                def eventFilter(self, obj, event):
+                                    # ウィンドウ状態変更イベントをキャッチ
+                                    if event.type() == QEvent.WindowStateChange:
+                                        # フルスクリーンへの遷移を検出
+                                        if obj.windowState() & Qt.WindowFullScreen:
+                                            # フルスクリーン状態を解除して通常状態に戻す
+                                            obj.setWindowState(obj.windowState() & ~Qt.WindowFullScreen)
+                                            print("[!] Fullscreen blocked (would cause crash)")
+                                            return True  # イベントを消費
+                                    return False  # 他のイベントは通す
 
-                            # フルスクリーンボタンヒントを除外
-                            new_flags = current_flags & ~Qt.WindowFullscreenButtonHint
-
-                            # フラグを設定してウィンドウを再表示
-                            native.setWindowFlags(new_flags)
-                            # フラグ変更後は必ずshow()が必要
-                            native.show()
+                            # イベントフィルターをインストール
+                            self._fullscreen_blocker = FullscreenBlocker()
+                            native.installEventFilter(self._fullscreen_blocker)
 
                             fullscreen_disabled = True
-                            print("[✓] Disabled macOS fullscreen button")
+                            print("[✓] Fullscreen transition blocked (button may still appear)")
                         else:
                             print("[!] No Qt module found (PySide6/PyQt5)")
                     except Exception as e:
-                        print(f"[!] Could not disable fullscreen button: {e}")
+                        print(f"[!] Could not block fullscreen: {e}")
         except Exception as e:
             print(f"[!] Warning: {e}")
 
