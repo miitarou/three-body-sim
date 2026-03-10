@@ -9,3 +9,47 @@ __pycache__/
 !.pixi/config.toml
 # Mojo compiled binary
 mojo_physics
+
+# === Unity ===
+# Unity generated
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Uu]ser[Ss]ettings/
+**/[Mm]emoryCaptures/
+**/[Rr]ecordings/
+
+# Unity meta (keep these in git)
+# *.meta
+
+# IDE
+.vscode/
+*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.pidb
+*.booproj
+
+# OS
+Thumbs.db
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+
+# Crashlytics
+crashlytics-build.properties
+sysinfo.txt
+
+# Old unity-project scaffolding (not the real project)
+unity-project/Assets/
+unity-project/Packages/manifest.json
+unity-project/ProjectSettings/ProjectSettings.asset
+unity-project/ProjectSettings/ProjectVersion.txt
+unity-project/.gitignore
