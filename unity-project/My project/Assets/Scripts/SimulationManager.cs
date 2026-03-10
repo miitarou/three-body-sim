@@ -11,7 +11,7 @@ public class SimulationManager : MonoBehaviour
     public int nBodies = 3;
     public float massMin = 0.5f;
     public float massMax = 2.0f;
-    public float simTimeBudgetPerFrame = 0.006f;  // 1フレームで進めるシミュレーション時間（固定）
+    public float simTimeBudgetPerFrame = 0.003f;  // 1フレームで進めるシミュレーション時間（UIスライダーで変更可能）
     public int maxStepsPerFrame = 500;            // 安全上限
     public float outOfBoundsDist = 10.0f;
 
@@ -77,6 +77,13 @@ public class SimulationManager : MonoBehaviour
 
         // 境界外チェック → 自動リスタート
         if (NBodyPhysics.IsOutOfBounds(positions, outOfBoundsDist))
+        {
+            Restart();
+        }
+
+        // 天体収束（衝突）チェック → 自動リスタート
+        float minDist = NBodyPhysics.ComputeMinDistance(positions);
+        if (minDist < 0.02f)
         {
             Restart();
         }

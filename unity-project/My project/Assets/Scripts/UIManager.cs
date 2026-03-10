@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 最小限のUI管理
-/// リスタートボタン、物体数スライダー、情報表示
+/// リスタートボタン、物体数スライダー、速度スライダー、情報表示
 /// </summary>
 public class UIManager : MonoBehaviour
 {
@@ -20,6 +20,12 @@ public class UIManager : MonoBehaviour
     private bool useIMGUI = false;
     private int sliderBodyCount = 3;
 
+    // 速度スライダー: 対数スケール（0〜1 → 実際の速度に変換）
+    // 0.0 = 最遅 (0.0005), 0.5 = デフォルト (0.003), 1.0 = 最速 (0.05)
+    private float speedSliderValue = 0.35f;
+    private const float SPEED_MIN_LOG = -3.3f;   // log10(0.0005)
+    private const float SPEED_MAX_LOG = -1.3f;   // log10(0.05)
+
     void Start()
     {
         // UIコンポーネントがアタッチされていない場合はIMGUIにフォールバック
@@ -29,6 +35,8 @@ public class UIManager : MonoBehaviour
             if (simManager != null)
             {
                 sliderBodyCount = simManager.nBodies;
+                // 現在の速度からスライダー位置を逆算
+                speedSliderValue = SpeedToSlider(simManager.simTimeBudgetPerFrame);
             }
             return;
         }
@@ -90,8 +98,37 @@ public class UIManager : MonoBehaviour
     }
 
     /// <summary>
-    /// IMGUI フォールバック（Canvas UIが設定されていない場合に使用）
-    /// シンプルなボタンとスライダーを画面に表示
+    /// 対数スケール変換: スライダー値(0〜1) → シミュレーション速度
+    /// </summary>
+    private float SliderToSpeed(float t)
+    {
+        float logVal = Mathf.Lerp(SPEED_MIN_LOG, SPEED_MAX_LOG, t);
+        return Mathf.Pow(10f, logVal);
+    }
+
+    /// <summary>
+    /// 逆変換: シミュレーション速度 → スライダー値(0〜1)
+    /// </summary>
+    private float SpeedToSlider(float speed)
+    {
+        float logVal = Mathf.Log10(Mathf.Max(speed, 0.0001f));
+        return Mathf.InverseLerp(SPEED_MIN_LOG, SPEED_MAX_LOG, logVal);
+    }
+
+    /// <summary>
+    /// 速度の表示ラベル（x0.1〜x10 的な相対表記）
+    /// </summary>
+    private string SpeedLabel(float speed)
+    {
+        float defaultSpeed = 0.003f;
+        float ratio = speed / defaultSpeed;
+        if (ratio < 0.1f) return $"x{ratio:F2}";
+        if (ratio < 1f) return $"x{ratio:F1}";
+        return $"x{ratio:F1}";
+    }
+
+    /// <summary>
+    /// IMGUI フォールバック
     /// </summary>
     void OnGUI()
     {
@@ -110,9 +147,13 @@ public class UIManager : MonoBehaviour
         GUIStyle buttonStyle = new GUIStyle(GUI.skin.button);
         buttonStyle.fontSize = Mathf.Max(14, Screen.height / 45);
 
+        GUIStyle infoStyle = new GUIStyle(GUI.skin.label);
+        infoStyle.fontSize = Mathf.Max(12, Screen.height / 55);
+        infoStyle.normal.textColor = new Color(0.8f, 0.8f, 0.8f);
+
         float padding = 20f;
         float panelWidth = Screen.width * 0.35f;
-        float panelHeight = Screen.height * 0.25f;
+        float panelHeight = Screen.height * 0.35f;
 
         // 左上パネル
         GUILayout.BeginArea(new Rect(padding, padding, panelWidth, panelHeight), boxStyle);
@@ -123,19 +164,15 @@ public class UIManager : MonoBehaviour
         GUILayout.Space(4);
 
         // 情報表示
-        GUIStyle infoStyle = new GUIStyle(GUI.skin.label);
-        infoStyle.fontSize = Mathf.Max(12, Screen.height / 55);
-        infoStyle.normal.textColor = new Color(0.8f, 0.8f, 0.8f);
-
-        GUILayout.Label($"Generation: {simManager.nBodies}体  |  #{GetGeneration()}", infoStyle);
+        GUILayout.Label($"{simManager.nBodies}体  |  Generation #{GetGeneration()}", infoStyle);
         GUILayout.Space(8);
 
         // リスタートボタン
-        if (GUILayout.Button("🔄 リスタート", buttonStyle, GUILayout.Height(Screen.height * 0.04f)))
+        if (GUILayout.Button("🔄 リスタート", buttonStyle, GUILayout.Height(Screen.height * 0.035f)))
         {
             simManager.Restart();
         }
-        GUILayout.Space(4);
+        GUILayout.Space(6);
 
         // 物体数スライダー
         GUILayout.Label($"物体数: {sliderBodyCount}", infoStyle);
@@ -146,13 +183,23 @@ public class UIManager : MonoBehaviour
             sliderBodyCount = rounded;
             simManager.SetBodyCount(sliderBodyCount);
         }
+        GUILayout.Space(6);
+
+        // 速度スライダー（対数スケール）
+        float currentSpeed = SliderToSpeed(speedSliderValue);
+        GUILayout.Label($"速度: {SpeedLabel(currentSpeed)}", infoStyle);
+        float newSpeedSlider = GUILayout.HorizontalSlider(speedSliderValue, 0f, 1f);
+        if (Mathf.Abs(newSpeedSlider - speedSliderValue) > 0.001f)
+        {
+            speedSliderValue = newSpeedSlider;
+            simManager.simTimeBudgetPerFrame = SliderToSpeed(speedSliderValue);
+        }
 
         GUILayout.EndArea();
     }
 
     private int GetGeneration()
     {
-        // SimulationManagerのgeneration フィールドにアクセス（パブリックにする必要がある場合は調整）
         var field = typeof(SimulationManager).GetField("generation",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         if (field != null)
