@@ -53,3 +53,4 @@ unity-project/Packages/manifest.json
 unity-project/ProjectSettings/ProjectSettings.asset
 unity-project/ProjectSettings/ProjectVersion.txt
 unity-project/.gitignore
+unity-project/ios-build/

@@ -8,8 +8,6 @@
 
 N個の天体が万有引力で相互作用する様子をリアルタイムでシミュレーション・可視化するプログラムです。
 
-> 📱 **iPhone/iPad版もあります！** → [three-body-sim-unity](https://github.com/miitarou/three-body-sim-unity)
-
 ![Demo](demo.gif)
 
 ## 🚀 機能
